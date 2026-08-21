@@ -1,3 +1,19 @@
+#pragma once
+
+#include <Arduino.h>
+#include <U8x8lib.h>  //https://github.com/olikraus/u8g2
+#include <SPI.h>
+#include <Wire.h>
+#include <EEPROM.h>
+//#include "PID_RT.h"
+#include <QuickPID.h>       //https://github.com/Dlloydev/QuickPID
+#include <EncoderButton.h>  //https://github.com/Stutchbury/EncoderButton
+#include <TimeLib.h>        //https://www.pjrc.com/teensy/td_libs_Time.html
+//#include "climateChamber.h"
+#include "RunningAverage.h"  ///https://github.com/RobTillaart/RunningAverage/tree/master
+#include <avr/pgmspace.h>   //GROKS says so, works without 
+
+
 // ***** CONSTANTS *****
 // ***** GENERAL *****
 
@@ -177,3 +193,73 @@ extern float PID1output;
 extern unsigned long noSensorSince;
 extern bool noSensorFault;
 extern uint16_t numberOfWireFaults;
+
+extern RunningAverage AMBIENT_TEMP;
+extern RunningAverage HEATBLOCK_TEMP;
+extern RunningAverage HEATSINK_TEMP;
+//these are for the 4 SHT41A sensors
+extern RunningAverage CHAMBER_TEMP[4]; 
+extern RunningAverage CHAMBER_HUM[4]; 
+
+enum RegenState {
+  READY,
+  REGEN,
+  FAILED
+};
+
+struct SensorState {
+  float temperature;
+  float humidity;
+  bool isValid;
+  RegenState regenState;
+  unsigned long regenTimer;
+  unsigned long regenDuration;
+  uint8_t lastRegenDay;
+};
+extern SensorState sensor[4];
+
+extern const char menuOptions[][4];
+extern const char* const monthNames[] PROGMEM;
+extern const char* const parameterNames[] PROGMEM;
+extern const float defaultpx[30] PROGMEM;
+extern const float baudRates[14];
+
+
+extern U8X8_SH1106_128X64_WINSTAR_4W_HW_SPI u8x8;
+extern EncoderButton eb1;
+extern QuickPID chPID;
+extern QuickPID hbPID;
+
+// ========== Function prototypes (temporary – everything in one place for now) ==========
+void detectHCmode();
+void updateUseOuterI();
+void loadPIDs(void);
+void swapPIDmode(void);
+void setFanSpeed();
+void sensorMaint ();
+void regenSensorStart(uint8_t idx);
+void regenSensorEnd();
+void selectI2CChannel(uint8_t channel);
+void readSHT41(uint8_t idx);
+void sampleSensors(void);
+double NTCread(uint8_t pin);
+void displayUpdate(void);
+int rightJustify(double value);
+void minutesFunctions(unsigned long now);
+void hourFunctions(unsigned long now);
+void lightControl(bool state);
+void digitalClockDisplay(uint8_t mode);
+void printDigits(int digits);
+void onEb1Clicked(EncoderButton& eb);
+void onEb1Encoder(EncoderButton& eb);
+void programmingMenu(void);
+void displayProgram(void);
+void menuMenu(void);
+double constrainValue(uint8_t param, double val);
+uint8_t maxDayInMonth(uint8_t month, uint16_t year);
+uint8_t decToBcd(uint8_t val);
+uint8_t bcdToDec(uint8_t val);
+time_t getRtcTime();
+void updateRTC();
+void writeFullRtcFromSysTime();
+int freeRam();

@@ -35,7 +35,7 @@ Use it for whatever
 #define DEBUG_BEGIN(x)      // Does nothing
 #define DEBUG_FLUSH()
 #endif
-
+/*
 #include <Arduino.h>
 #include <U8x8lib.h>  //https://github.com/olikraus/u8g2
 #include <SPI.h>
@@ -45,8 +45,10 @@ Use it for whatever
 #include <QuickPID.h>       //https://github.com/Dlloydev/QuickPID
 #include <EncoderButton.h>  //https://github.com/Stutchbury/EncoderButton
 #include <TimeLib.h>        //https://www.pjrc.com/teensy/td_libs_Time.html
-#include "climateChamber.h"
 #include "RunningAverage.h"  ///https://github.com/RobTillaart/RunningAverage/tree/master
+*/
+#include "main.h"
+
 
 
 float temperature;  //I2C temp calculated
@@ -122,21 +124,6 @@ RunningAverage CHAMBER_HUM[4] = {
   RunningAverage(5),
   RunningAverage(5),
   RunningAverage(5)
-};
-//setting up the sensor structs
-enum RegenState {
-  READY,
-  REGEN,
-  FAILED
-};
-struct SensorState {
-  float temperature;
-  float humidity;
-  bool isValid;
-  RegenState regenState;
-  unsigned long regenTimer;
-  unsigned long regenDuration;
-  uint8_t lastRegenDay;
 };
 SensorState sensor[4];  // sensor[0] through sensor[4]
 
@@ -237,7 +224,9 @@ const float defaultpx[30] PROGMEM = { DEAD_ZONE,
 const float baudRates[14] = { 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600,
                               74800, 115200, 230400, 250000, 500000, 1000000 };
 
-// Create the u8x8 display                //
+
+//***********************stopped switching move to header file here */
+                              // Create the u8x8 display                //
 U8X8_SH1106_128X64_WINSTAR_4W_HW_SPI u8x8(/* cs=*/OLED_CS, /* dc=*/OLED_DC, /* reset=*/OLED_RESET);  // same as the NONAME variant, but uses updated SH1106 init sequence
 
 // *****************one of these shoulf work for new display *************************
@@ -633,7 +622,8 @@ void sensorMaint (){
 
 
 
-}
+  }
+
 
 // Regenerate a T&H sensor
 void regenSensorStart(uint8_t idx) {
