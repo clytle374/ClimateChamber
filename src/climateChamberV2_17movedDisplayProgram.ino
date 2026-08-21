@@ -49,35 +49,13 @@ Use it for whatever
 #include "RunningAverage.h"  ///https://github.com/RobTillaart/RunningAverage/tree/master
 
 
-//states for display modes
-typedef enum DISPLAY_MODE {
-  RUN,
-  MENU,
-  STATUS,
-  PROGRAM
-} displayMode_t;
-//overall functions
-typedef enum MODE_STATE {  //states for function
-  INCUBATE,
-  FRUIT
-} modeState_t;
-
-modeState_t modeState;      //  what mode for function
-displayMode_t displayMode;  // what mode is the display in, are we programming?
-
-// Global temperature reading
 float temperature;  //I2C temp calculated
 float humidity;     //I2C huidity calculated
-//float temperature2;  //I2C temp calculated
-//float humidity2;     //I2C huidity calculated
-
 float NTCtempHeatblock;   //where we put NTC reading
 float NTCtempHeatsink;    //where we put NTC reading
 float humiditySetpoint;   //target temp, moved here due to status display
 float ambientTemp = 100;  //MB ambient temp  I hope they are close
-
 double px[41];  //parameters
-
 int encoder;                 //stored encoder couunts
 bool button = 0;             // is button pressed?
 int currentParam = 0;        //what is the current position of the programming menu
@@ -86,11 +64,7 @@ int menuPointer = 10;        // move selector to parameters.  10 is for changing
 bool edit = 1;               // sw back to edit mode
 int menuYes = 0;             // IDK, look into this  I thinkg this triggers the YES NO display in program memory
 int currentBaudPointer = 0;  // pointer for selecting baudrates from list, should be local?
-//double deltaTemp;    //trash?
-
 //control timer variables
-//unsigned long displayTimer;              //display update normal
-//unsigned long pwmTimer;                  //check for heat mode time
 unsigned long controlTimer;              //control internal time
 unsigned long sensorTimer;               // time for reads
 unsigned long statusScreenTimer;         //pid loop time
@@ -109,7 +83,6 @@ int setHours;                            // hours for setting parameters
 int setMinutes;                          // minutes for setting parameters.
 bool airPumpRunning = false;             //airpump
 bool humidifierRunning = false;
-//int fanSpeed;                //speed 30-100 %
 uint8_t fanSpeed = 100;      // current actual speed (global or static)
 uint8_t fanTarget = 25;      // Desired fan speed (updated from main control logic)
 bool inHeatMode = true;      //PID to setup for heat
@@ -119,22 +92,18 @@ bool StatusModeStarted = 0;  //are we going to be in status code?
 int menuSelector = 3;        //selecting menu options
 bool humidifierRan = 0;      //just for serial output as humidifer runs for a time shorter than update.
 bool useOuterI = true;       // are we inhibiting the PID I term to stop the endless windup problem
-
 //screen scrolling variables.
 int screenX = 0;  //locations for display scanning to not burn screen
 int screenY = 0;  //locations for display scanning to not burn screen
 int xShift;       //used to return a variable from a right justify function
-
 // ***** PID CONTROL VARIABLES *****
 float setpoint;  //target temp
 //double input = 21;    //zero will throw errors before first averaged sample
 float pwmDrive;        //output from PID for main element
 float heatBlockInput;  //output for the cool PID
 float PID1output;      //we're going to save the output of PID1 here and use it for deltaT and serial debugging
-
 unsigned long noSensorSince = 0;  //timer to start if e have no sensor data
 bool noSensorFault = false;       //fault state for no sensor data.
-
 uint16_t numberOfWireFaults = 0;  //logging the number of wire timeouts, crash hunting
 
 // setup running averages
@@ -170,6 +139,21 @@ struct SensorState {
   uint8_t lastRegenDay;
 };
 SensorState sensor[4];  // sensor[0] through sensor[4]
+
+//states for display modes
+typedef enum DISPLAY_MODE {
+  RUN,
+  MENU,
+  STATUS,
+  PROGRAM
+} displayMode_t;
+//overall functions
+typedef enum MODE_STATE {  //states for function
+  INCUBATE,
+  FRUIT
+} modeState_t;
+modeState_t modeState;      //  what mode for function
+displayMode_t displayMode;  // what mode is the display in, are we programming?
 
 // these are the texts for the menu.
 const char menuOptions[][4] = { "NO", "YES" };  //display for ON/OFF menu options

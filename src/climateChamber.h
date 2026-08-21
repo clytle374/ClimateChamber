@@ -1,30 +1,18 @@
 // ***** CONSTANTS *****
 // ***** GENERAL *****
 
-//********** screen data *********
-////#define SCREEN_WIDTH 128  // OLED display width, in pixels
-//#define SCREEN_HEIGHT 64  // OLED display height, in pixels
-//#define X_AXIS_START 18   // X-axis starting position
-//#define DISPLAY_RATE 100   //display
-
-unsigned long DISPLAY_RATE = 5000;   //display update normal
-unsigned long DISPLAY_PROGRAM_RATE = 125;  //display update for menus
-//unsigned long PWM_RATE = 10; //check for heat mode time
-unsigned long CONTROL_RATE = 5000; //general control loop 
-unsigned long PID_RATE = 5000000;  //PID control ***in uS NOT mS 
-unsigned long SENSOR_RATE = 1000;  // time for reads   
-//unsigned long PID_RATE = 15000;      //pid loop time 
-//unsigned long
-
-
+#define DISPLAY_RATE  5000UL   //display update normal
+#define DISPLAY_PROGRAM_RATE  125UL //display update for menus
+#define CONTROL_RATE  5000UL //general control loop 
+#define PID_RATE  5000000UL  //PID control ***in uS NOT mS 
+#define SENSOR_RATE  1000UL  // time for reads   
+#define TEMP_FAULT_THRESHOLD 5      // 5F diffrence is a dead sensor. 
+#define HUMIDITY_FAULT_THRESHOLD 5  //5 percent diff is a sensor that needs regen
 
 
 // ***** GENERAL PROFILE CONSTANTS *****
 #define PROFILE_TYPE_ADDRESS 0    //eeprom address for current profile
 #define EEPROM_STORAGE_ADDRESS 1  //eeprom address for everything else
-
-
-
 #define DEAD_ZONE 1               //degrees of dead zone
 #define DEAD_ZONEp 0              //^^ parameter number
 #define INCUBATE_TEMP 93          //temp for
@@ -65,25 +53,20 @@ unsigned long SENSOR_RATE = 1000;  // time for reads
 #define SET_HOURSp 18             //^^ parameter number
 #define SET_MINUTES 1             //set time minutes
 #define SET_MINUTESp 19           //^^ parameter number
-
 #define SET_MONTH 9               //set time minutes
 #define SET_MONTHp 20             //^^ parameter number
 #define SET_DAY 17             //set time minutes
 #define SET_DAYp 21                  //^^ parameter number
 #define SET_YEAR 26                 //set time minutes
 #define SET_YEARp 22                //^^ parameter number
-
-
-
-// ****** serial speed ********
 #define SERIAL_SPEED 115200  //serial com speed parameter 36
 #define SERIAL_BAUD 23       //^^ parameter number
 //********** end paramters saved in eeprom *****************
+//pointers for specail parameters for menus
 #define EXIT 24
 #define DUMP_TO_SERIAL 25
 #define LOAD_DEFAULTS 26
 #define SAVE_TO_EEPROM 27
-
 
 //Pin assignments
 #define ROTARY_PIN1 10  //PD2
@@ -111,7 +94,7 @@ unsigned long SENSOR_RATE = 1000;  // time for reads
 #define ERROR_LED 28
 #define FAN_PWM 13
 
-#define I2C_MUX_ADDR        0x77
+//mux addresses 
 #define I2C_CH_TEMPHUM_A    0   //sensor board 1
 #define I2C_CH_TEMPHUM_B    1   //sensor board 2
 #define I2C_CH_LOCAL_TEMP   4
@@ -120,17 +103,77 @@ unsigned long SENSOR_RATE = 1000;  // time for reads
 #define I2C_CH_SPARE1       2
 #define I2C_CH_SPARE2       3
 
+//I2C device addresses 
+#define I2C_MUX_ADDR        0x77
 #define SENSOR1_ADDR 0x44           //temp and humidity I2C addresses
 #define SENSOR2_ADDR 0x45           //second temp and humidity I2C sensor
 #define REGEN_DURATION_MS 60000UL   // 60 seconds heat + cool-down
-#define TEMP_FAULT_THRESHOLD 5      // 5F diffrence is a dead sensor. 
-#define HUMIDITY_FAULT_THRESHOLD 5  //5 percent diff is a sensor that needs regen
-
-
-#define TIME_HEADER "T"  // Header tag for serial time sync message
-#define TIME_REQUEST 7   // ASCII bell character requests a time sync message
+#define I2C_LOCAL_TEMP_ADDRESS 0x48  //LM75B sensor address
 
 //OLED SW SPI setup     ****I'm and idiot, use MISO for the data to the OLED on the PCB
 #define OLED_CS 7  // Example Clock pin (SCK)
 #define OLED_DC  4  //  DC
 #define OLED_RESET 2  // Example Reset pin (RES)
+
+
+// ===== Global variables =====
+extern float temperature;               // I2C temp calculated
+extern float humidity;                  // I2C humidity calculated
+extern float NTCtempHeatblock;          // NTC reading
+extern float NTCtempHeatsink;           // NTC reading
+extern float humiditySetpoint;          // target humidity (moved for status display)
+extern float ambientTemp;               // MB ambient temp
+extern double px[41];                   // parameters
+extern int encoder;                     // stored encoder counts
+extern bool button;                     // is button pressed?
+extern int currentParam;                // current position of the programming menu
+extern int lastPointer;                 // save state to catch change
+extern int menuPointer;                 // selector for parameters
+extern bool edit;                       // edit mode flag
+extern int menuYes;                     // triggers YES/NO display
+extern int currentBaudPointer;          // baudrate list pointer
+
+// control timer variables
+extern unsigned long controlTimer;
+extern unsigned long sensorTimer;
+extern unsigned long statusScreenTimer;
+extern unsigned long humidifierRunningTimer;
+extern unsigned long airPumpRunningTimer;
+extern unsigned long previousMillis;
+extern unsigned long dynamicInterval;
+extern bool minutesFunctionsRan;
+extern int lastMinute;
+extern bool hourFunctionsRan;
+extern int lastHour;
+
+extern int setYear;
+extern int setMonth;
+extern int setDay;
+extern int setHours;
+extern int setMinutes;
+
+extern bool airPumpRunning;
+extern bool humidifierRunning;
+extern uint8_t fanSpeed;
+extern uint8_t fanTarget;
+extern bool inHeatMode;
+extern bool runProgramCode;
+extern bool runMenuCode;
+extern bool StatusModeStarted;
+extern int menuSelector;
+extern bool humidifierRan;
+extern bool useOuterI;
+
+// screen scrolling
+extern int screenX;
+extern int screenY;
+extern int xShift;
+
+// PID control variables
+extern float setpoint;
+extern float pwmDrive;
+extern float heatBlockInput;
+extern float PID1output;
+extern unsigned long noSensorSince;
+extern bool noSensorFault;
+extern uint16_t numberOfWireFaults;
