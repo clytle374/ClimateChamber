@@ -252,13 +252,7 @@ void updateUseOuterI();
 void loadPIDs(void);
 void swapPIDmode(void);
 void setFanSpeed();
-void sensorMaint ();
-void regenSensorStart(uint8_t idx);
-void regenSensorEnd();
-void selectI2CChannel(uint8_t channel);
-void readSHT41(uint8_t idx);
-void sampleSensors(void);
-double NTCread(uint8_t pin);
+
 void minutesFunctions(unsigned long now);
 void hourFunctions(unsigned long now);
 void lightControl(bool state);
