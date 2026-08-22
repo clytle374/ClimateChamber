@@ -1,5 +1,9 @@
 #include "display.h"
 #include "main.h"
+#include "debug.h"
+#include "sensors.h"
+#include "utils.h"
+
 //
 
                               // Create the u8x8 display                //
