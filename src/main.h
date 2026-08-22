@@ -201,6 +201,22 @@ extern RunningAverage HEATSINK_TEMP;
 extern RunningAverage CHAMBER_TEMP[4]; 
 extern RunningAverage CHAMBER_HUM[4]; 
 
+// states for display modes
+typedef enum DISPLAY_MODE {
+  RUN,
+  MENU,
+  STATUS,
+  PROGRAM
+} displayMode_t;
+extern displayMode_t displayMode;
+
+// overall function modes
+typedef enum MODE_STATE {
+  INCUBATE,
+  FRUIT
+} modeState_t;
+extern modeState_t modeState;
+
 enum RegenState {
   READY,
   REGEN,
@@ -225,7 +241,7 @@ extern const float defaultpx[30] PROGMEM;
 extern const float baudRates[14];
 
 
-extern U8X8_SH1106_128X64_WINSTAR_4W_HW_SPI u8x8;
+
 extern EncoderButton eb1;
 extern QuickPID chPID;
 extern QuickPID hbPID;
@@ -243,17 +259,12 @@ void selectI2CChannel(uint8_t channel);
 void readSHT41(uint8_t idx);
 void sampleSensors(void);
 double NTCread(uint8_t pin);
-void displayUpdate(void);
-int rightJustify(double value);
 void minutesFunctions(unsigned long now);
 void hourFunctions(unsigned long now);
 void lightControl(bool state);
-void digitalClockDisplay(uint8_t mode);
-void printDigits(int digits);
 void onEb1Clicked(EncoderButton& eb);
 void onEb1Encoder(EncoderButton& eb);
 void programmingMenu(void);
-void displayProgram(void);
 void menuMenu(void);
 double constrainValue(uint8_t param, double val);
 uint8_t maxDayInMonth(uint8_t month, uint16_t year);
