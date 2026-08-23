@@ -1,16 +1,167 @@
 #include "sensors.h"
-#include "main.h"
 #include "debug.h"
+#include "main.h"
 
+void sensorMaint() {
+  DEBUG_PRINTLN(F("sensorMaint ran"));
+  static uint8_t rehabIndex = 0;
+  for (int i = 0; i < 4; i++) { // check for sensors in regen and clear
+    if (sensor[i].regenState == REGEN) {
+      if (regenSensorEnd(i) == 1) {
+        sensor[i].regenState = READY;
+        sensor[i].isValid = true;
+        DEBUG_PRINT(F("Regen and test sensor ")); // let the world know
+        DEBUG_PRINTLN(i);                         // that sensoo is back online
+        DEBUG_PRINT(F(" okay"));
+      } else {
+        sensor[i].regenState = FAILED;
+        sensor[i].isValid = false;
+        DEBUG_PRINT(F("Sensor "));
+        DEBUG_PRINT(i);
+        DEBUG_PRINTLN(F(" testing failed"));
+        return;
+      }
+    }
+  }
+  if (sensor[rehabIndex].regenState == FAILED) { // check for failed sensor
+    DEBUG_PRINT(F("Sensor "));
+    DEBUG_PRINT(rehabIndex);
+    DEBUG_PRINTLN(F(" in regen mode"));
+    sensor[rehabIndex].regenState = REGEN;
+    sensor[rehabIndex].isValid = false;
+    regenSensorStart(rehabIndex);
+    rehabIndex++;
+    if (rehabIndex > 3) {
+      rehabIndex = 0;
+    }
+  }
+}
 
-//sensor maintenance.  Check for bad sensors. Regen if time, or giving bad readings.
-void sensorMaint (){
-  
-
-
-
+//  Check sensor for bad temp readings.
+void sensorTempTest() {
+  // Skip entirely if any sensor is regenerating
+  for (int i = 0; i < 4; i++) {
+    if (sensor[i].regenState == REGEN)
+      return;
   }
 
+  float sDeviation[4] = {0, 0, 0, 0};
+  uint8_t validCount = 0;
+
+  for (int i = 0; i < 4; i++) {
+    if (!sensor[i].isValid)
+      continue;
+
+    float sum = 0;
+    uint8_t count = 0;
+    for (int j = 0; j < 4; j++) {
+      if (j == i || !sensor[j].isValid)
+        continue;
+      sum += sensor[j].temperature;
+      count++;
+    }
+    if (count == 0)
+      continue;
+
+    sDeviation[i] = fabs(sensor[i].temperature - (sum / count));
+    validCount++;
+  }
+
+  if (validCount < 3)
+    return; // need a real consensus
+
+  // Find sensor with largest deviation
+  uint8_t maxDevSensor = 0;
+  float maxDev = sDeviation[0];
+  for (int i = 1; i < 4; i++) {
+    if (sDeviation[i] > maxDev) {
+      maxDev = sDeviation[i];
+      maxDevSensor = i;
+    }
+  }
+
+  if (maxDev > TEMP_FAULT_THRESHOLD) {
+    // sensor[maxDevSensor] is the outlier
+    DEBUG_PRINT(F("Sensor "));
+    DEBUG_PRINT(maxDevSensor);
+    DEBUG_PRINTLN(F(" failed"));
+    sensor[maxDevSensor].isValid = false;
+    sensor[maxDevSensor].regenState = FAILED;
+    sensor[maxDevSensor].faultCounter++;
+  }
+  DEBUG_PRINT(sDeviation[0]);
+  DEBUG_PRINT("  ");
+  DEBUG_PRINT(sDeviation[1]);
+  DEBUG_PRINT("  ");
+  DEBUG_PRINT(sDeviation[2]);
+  DEBUG_PRINT("  ");
+  DEBUG_PRINT(sDeviation[3]);
+  DEBUG_PRINT(" F ");
+  DEBUG_PRINTLN(maxDevSensor);
+}
+
+// Check sensor for bad humidity readings.
+void sensorHumidityTest() {
+  // Skip entirely if any sensor is regenerating
+  for (int i = 0; i < 4; i++) {
+    if (sensor[i].regenState == REGEN)
+      return;
+  }
+
+  float sDeviation[4] = {0, 0, 0, 0};
+  uint8_t validCount = 0;
+
+  for (int i = 0; i < 4; i++) {
+    if (!sensor[i].isValid)
+      continue;
+
+    float sum = 0;
+    uint8_t count = 0;
+    for (int j = 0; j < 4; j++) {
+      if (j == i || !sensor[j].isValid)
+        continue;
+      sum += sensor[j].humidity;
+      count++;
+    }
+    if (count == 0)
+      continue;
+
+    sDeviation[i] = fabs(sensor[i].humidity - (sum / count));
+    validCount++;
+  }
+
+  if (validCount < 3)
+    return; // need a real consensus
+
+  // Find sensor with largest deviation
+  uint8_t maxDevSensor = 0;
+  float maxDev = sDeviation[0];
+  for (int i = 1; i < 4; i++) {
+    if (sDeviation[i] > maxDev) {
+      maxDev = sDeviation[i];
+      maxDevSensor = i;
+    }
+  }
+
+  if (maxDev > HUMIDITY_FAULT_THRESHOLD) {
+    // sensor[maxDevSensor] is the outlier
+    DEBUG_PRINT(F("Sensor "));
+    DEBUG_PRINT(maxDevSensor);
+    DEBUG_PRINTLN(F(" failed"));
+    sensor[maxDevSensor].isValid = false;
+    sensor[maxDevSensor].regenState = FAILED;
+    sensor[maxDevSensor].faultCounter++;
+  }
+  DEBUG_PRINT(sDeviation[0]);
+  DEBUG_PRINT("  ");
+  DEBUG_PRINT(sDeviation[1]);
+  DEBUG_PRINT("  ");
+  DEBUG_PRINT(sDeviation[2]);
+  DEBUG_PRINT("  ");
+  DEBUG_PRINT(sDeviation[3]);
+  DEBUG_PRINT(" %RH ");
+  DEBUG_PRINTLN(maxDevSensor);
+}
 
 // Regenerate a T&H sensor
 void regenSensorStart(uint8_t idx) {
@@ -29,7 +180,7 @@ void regenSensorStart(uint8_t idx) {
   }
 
   Wire.beginTransmission(address);
-  Wire.write(0x2F);  // 110 mW for 1 s
+  Wire.write(0x2F); // 110 mW for 1 s
 
   if (Wire.endTransmission() != 0) {
     DEBUG_PRINT(F("Regen Failed Sensor "));
@@ -44,37 +195,38 @@ void regenSensorStart(uint8_t idx) {
   }
 }
 
-//Manage the starting and ending of T&H sensor regen cycles
-void regenSensorEnd() {
-  for (int i = 0; i < 4; i++) {                                    //scan SHT41As
-    if (sensor[i].regenState == REGEN) {                           //do we have a sensor in regen?
-      if (millis() - sensor[i].regenTimer >= REGEN_DURATION_MS) {  // 60 s heat + cool
+// Manage the starting and ending of T&H sensor regen cycles
+bool regenSensorEnd(uint8_t idx) {
 
-        uint8_t address;  //find address of sensor
-        if (i == 0 || i == 2) {
-          address = SENSOR1_ADDR;
-        } else {
-          address = SENSOR2_ADDR;
-        }
+  uint8_t address; // find address of sensor
+  // Read and discard the heater measurement
+  if (idx == 0 || idx == 2) {
+    address = SENSOR1_ADDR;
+  } else {
+    address = SENSOR2_ADDR;
+  }
 
-        if (i < 2) {  //find mux CH of sensor
-          selectI2CChannel(I2C_CH_TEMPHUM_A);
-        } else {
-          selectI2CChannel(I2C_CH_TEMPHUM_B);
-        }
+  if (idx < 2) {
+    selectI2CChannel(I2C_CH_TEMPHUM_A);
+  } else {
+    selectI2CChannel(I2C_CH_TEMPHUM_B);
+  }
+  Wire.requestFrom(address, (uint8_t)6);
+  while (Wire.available()) {
+    Wire.read();
+  }
+  for (int i = 0; i < 5; i++) {
+    readSHT41(idx);
+  }
 
-        // Read and discard the heater measurement
-        Wire.requestFrom(address, (uint8_t)6);
-        while (Wire.available()) {
-          Wire.read();
-        }
+  float testSensorTempError = fabs(sensor[idx].temperature - temperature);
+  float testSensorHumidError = fabs(sensor[idx].humidity - humidity);
 
-        sensor[i].regenState = READY;              //set it back to ready
-        sensor[i].isValid = true;                  //set it back to valid
-        DEBUG_PRINT(F("Regen Complete Sensor "));  //let the world know
-        DEBUG_PRINTLN(i);                          // that sensoo is back online
-      }
-    }
+  if (testSensorTempError < TEMP_FAULT_THRESHOLD &&
+      testSensorHumidError < HUMIDITY_FAULT_THRESHOLD) {
+    return 1;
+  } else {
+    return 0;
   }
 }
 
@@ -89,7 +241,7 @@ void selectI2CChannel(uint8_t channel) {
   Wire.write(1 << channel);
   if (Wire.endTransmission() != 0) {
     DEBUG_PRINTLN(F("MUX select failed"));
-    numberOfWireFaults++;          // or whatever counter you want
+    numberOfWireFaults++; // or whatever counter you want
     // optional: try to recover, Wire.begin(), etc.
   }
 
@@ -98,45 +250,43 @@ void selectI2CChannel(uint8_t channel) {
 
 // read a T&H sensor
 void readSHT41(uint8_t idx) {
-  if (sensor[idx].regenState == REGEN || sensor[idx].regenState == FAILED) {
-    return;  // don’t talk to it right now
-  }
   uint8_t address;
-  if (idx == 0 || idx == 2) {  //is this the 1st or 2nd sensor on the PCB
+  if (idx == 0 || idx == 2) { // is this the 1st or 2nd sensor on the PCB
     address = SENSOR1_ADDR;
   } else {
     address = SENSOR2_ADDR;
   }
-  if (idx < 2) {  //find which PCB and switch multiplexxer
+  if (idx < 2) { // find which PCB and switch multiplexxer
     selectI2CChannel(I2C_CH_TEMPHUM_A);
   } else {
     selectI2CChannel(I2C_CH_TEMPHUM_B);
   }
 
   Wire.beginTransmission(address);
-  Wire.write(0xFD);  // High precision measurement command for SHT4x
+  Wire.write(0xFD); // High precision measurement command for SHT4x
   if (Wire.endTransmission() != 0) {
     DEBUG_PRINT(F("T&H Sensor "));
     DEBUG_PRINT(idx);
     DEBUG_PRINTLN(F(" command failed"));
   } else {
-    delay(10);  // SHT41 high-precision needs ~8.5 ms, 10 ms is safe
+    delay(10); // SHT41 high-precision needs ~8.5 ms, 10 ms is safe
     Wire.requestFrom(address, (uint8_t)6);
     if (Wire.available() == 6) {
       uint16_t temp_raw = (Wire.read() << 8) | Wire.read();
-      Wire.read();  // CRC (temperature)
+      Wire.read(); // CRC (temperature)
       uint16_t humi_raw = (Wire.read() << 8) | Wire.read();
-      Wire.read();  // CRC (humidity)
+      Wire.read(); // CRC (humidity)
 
       // SHT4x conversion formulas
       float tempC = -45.0f + 175.0f * (temp_raw / 65535.0f);
       float tempF = tempC * 9.0f / 5.0f + 32.0f;
-
       float humid = -6.0f + 125.0f * (humi_raw / 65535.0f);
-      if (humid > 100.0f) humid = 100.0f;
-      if (humid < 0.0f) humid = 0.0f;
+      if (humid > 100.0f)
+        humid = 100.0f;
+      if (humid < 0.0f)
+        humid = 0.0f;
 
-      CHAMBER_TEMP[idx].addValue(tempF);  //load values into running average
+      CHAMBER_TEMP[idx].addValue(tempF); // load values into running average
       CHAMBER_HUM[idx].addValue(humid);
       sensor[idx].temperature = CHAMBER_TEMP[idx].getAverage();
       sensor[idx].humidity = CHAMBER_HUM[idx].getAverage();
@@ -144,30 +294,30 @@ void readSHT41(uint8_t idx) {
   }
 }
 
-//sample all the sensors in the unit
+// sample all the sensors in the unit
 void sampleSensors(void) {
   readSHT41(0);
-  if (Wire.getWireTimeoutFlag()) {     //track wire resets **************
-    Wire.clearWireTimeoutFlag();       //debug use, delete *************
-    DEBUG_PRINTLN(F("T&H Sensor 0"));  //*********************
+  if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
+    Wire.clearWireTimeoutFlag();      // debug use, delete *************
+    DEBUG_PRINTLN(F("T&H Sensor 0")); //*********************
     numberOfWireFaults++;
   }
   readSHT41(1);
-  if (Wire.getWireTimeoutFlag()) {     //track wire resets **************
-    Wire.clearWireTimeoutFlag();       //debug use, delete *************
-    DEBUG_PRINTLN(F("T&H Sensor 1"));  //*********************
+  if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
+    Wire.clearWireTimeoutFlag();      // debug use, delete *************
+    DEBUG_PRINTLN(F("T&H Sensor 1")); //*********************
     numberOfWireFaults++;
   }
   readSHT41(2);
-  if (Wire.getWireTimeoutFlag()) {     //track wire resets **************
-    Wire.clearWireTimeoutFlag();       //debug use, delete *************
-    DEBUG_PRINTLN(F("T&H Sensor 2"));  //*********************
+  if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
+    Wire.clearWireTimeoutFlag();      // debug use, delete *************
+    DEBUG_PRINTLN(F("T&H Sensor 2")); //*********************
     numberOfWireFaults++;
   }
   readSHT41(3);
-  if (Wire.getWireTimeoutFlag()) {     //track wire resets **************
-    Wire.clearWireTimeoutFlag();       //debug use, delete *************
-    DEBUG_PRINTLN(F("T&H Sensor 3"));  //*********************
+  if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
+    Wire.clearWireTimeoutFlag();      // debug use, delete *************
+    DEBUG_PRINTLN(F("T&H Sensor 3")); //*********************
     numberOfWireFaults++;
   }
 
@@ -179,14 +329,14 @@ void sampleSensors(void) {
     Wire.requestFrom(I2C_LOCAL_TEMP_ADDRESS, 2);
     if (Wire.available() == 2) {
       int16_t raw = (Wire.read() << 8) | Wire.read();
-      double ambF = ((raw >> 5) * 0.125) * 1.8 + 32.0;  // °F
+      double ambF = ((raw >> 5) * 0.125) * 1.8 + 32.0; // °F
       AMBIENT_TEMP.addValue(ambF);
     }
   }
 
-  if (Wire.getWireTimeoutFlag()) {  //track wire resets **************
-    Wire.clearWireTimeoutFlag();    //debug use, delete *************
-    DEBUG_PRINTLN(F("LM75B"));      //*********************
+  if (Wire.getWireTimeoutFlag()) { // track wire resets **************
+    Wire.clearWireTimeoutFlag();   // debug use, delete *************
+    DEBUG_PRINTLN(F("LM75B"));     //*********************
     numberOfWireFaults++;
   }
   /*
@@ -219,21 +369,23 @@ void sampleSensors(void) {
   if (goodSensorCount > 0) {
     temperature = sumTemp / goodSensorCount;
     humidity = sumHum / goodSensorCount;
-    noSensorSince = 0;  // reset the timeout
+    noSensorSince = 0; // reset the timeout
     noSensorFault = false;
   } else {
     // keep the previous temperature & humidity values
     if (noSensorSince == 0) {
-      noSensorSince = millis();  // start the timer the first time we have zero sensors
+      noSensorSince =
+          millis(); // start the timer the first time we have zero sensors
     }
-    if (millis() - noSensorSince >= 120000UL) {  // e.g. 2 minutes
+    if (millis() - noSensorSince >= 120000UL) { // e.g. 2 minutes
       noSensorFault = true;
-      // optional: force safe PID output, raise alarm, etc.***********************
+      // optional: force safe PID output, raise alarm,
+      // etc.**************************************************
     }
   }
 }
 
-//read the NTCs
+// read the NTCs
 double NTCread(uint8_t pin) {
   double ADCvalue = analogRead(pin);
   double resistance = (1023.0 / ADCvalue) - 1.0;

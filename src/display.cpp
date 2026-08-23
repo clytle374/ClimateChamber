@@ -1,7 +1,7 @@
 #include "display.h"
 #include "main.h"
-#include "debug.h"
-#include "sensors.h"
+//#include "debug.h"
+//#include "sensors.h"
 #include "utils.h"
 
 //

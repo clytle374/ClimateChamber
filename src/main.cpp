@@ -279,6 +279,7 @@ void setup() {
     sensor[i].regenState = READY;
     sensor[i].regenTimer = 0;
     sensor[i].lastRegenDay = 0;
+    sensor[i].faultCounter = 0;
   }
 
 
@@ -456,7 +457,7 @@ void loop() {                              //******************main loop********
   // **********************  status LEDS *********************
   digitalWrite(H2O_LED, humidifierRunning);
   digitalWrite(AIR_LED, airPumpRunning);
-  regenSensorEnd();  //check and see if a sensor is done with regeneration
+  //regenMaint();  //check and see if a sensor is done with regeneration
 }
 
 // detect if we need to swap between heat and cool mode
@@ -575,6 +576,7 @@ void setFanSpeed() {
 
 //function to handle things every minute, or 5 minutes.
 void minutesFunctions(unsigned long now) {
+  static uint8_t stepIndex = 0;
   if (modeState == FRUIT) {
     humiditySetpoint = px[FRUIT_HUMIDITY_SETp];
     setpoint = px[FRUIT_TEMPp];
@@ -590,6 +592,21 @@ void minutesFunctions(unsigned long now) {
   if (humidity > 98) {
     airPumpRunningTimer = now;
     airPumpRunning = true;
+  }
+  switch(stepIndex){
+  case 0: 
+  sensorTempTest();
+  break;
+  case 1:  
+  sensorHumidityTest();
+  break;
+  case 2:
+  sensorMaint();
+  break;
+  }
+  stepIndex++;
+  if (stepIndex >= 2){
+    stepIndex = 0;
   }
 }
 

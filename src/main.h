@@ -220,7 +220,8 @@ extern modeState_t modeState;
 enum RegenState {
   READY,
   REGEN,
-  FAILED
+  FAILED,
+  REHAB
 };
 
 struct SensorState {
@@ -231,6 +232,7 @@ struct SensorState {
   unsigned long regenTimer;
   unsigned long regenDuration;
   uint8_t lastRegenDay;
+  uint16_t faultCounter;
 };
 extern SensorState sensor[4];
 
