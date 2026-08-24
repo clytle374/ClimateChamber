@@ -1,6 +1,12 @@
 #include "sensors.h"
 #include "debug.h"
 #include "main.h"
+void SixHourFunctions() {
+  uint8_t idx = hour() / 6;   // At hour 0,6,12,18 regen 0,1,2,3 respectivly 
+  if (idx < 4) {
+    regenSensorStart(idx);
+  }
+}
 
 void sensorMaint() {
   DEBUG_PRINTLN(F("sensorMaint ran"));
@@ -11,8 +17,8 @@ void sensorMaint() {
         sensor[i].regenState = READY;
         sensor[i].isValid = true;
         DEBUG_PRINT(F("Regen and test sensor ")); // let the world know
-        DEBUG_PRINTLN(i);                         // that sensoo is back online
-        DEBUG_PRINT(F(" okay"));
+        DEBUG_PRINT(i);                           // that sensoo is back online
+        DEBUG_PRINTLN(F(" okay"));
       } else {
         sensor[i].regenState = FAILED;
         sensor[i].isValid = false;
@@ -30,10 +36,10 @@ void sensorMaint() {
     sensor[rehabIndex].regenState = REGEN;
     sensor[rehabIndex].isValid = false;
     regenSensorStart(rehabIndex);
-    rehabIndex++;
-    if (rehabIndex > 3) {
-      rehabIndex = 0;
-    }
+  }
+  rehabIndex++;
+  if (rehabIndex > 3) {
+    rehabIndex = 0;
   }
 }
 
@@ -84,7 +90,7 @@ void sensorTempTest() {
     // sensor[maxDevSensor] is the outlier
     DEBUG_PRINT(F("Sensor "));
     DEBUG_PRINT(maxDevSensor);
-    DEBUG_PRINTLN(F(" failed"));
+    DEBUG_PRINTLN(F(" failed temp"));
     sensor[maxDevSensor].isValid = false;
     sensor[maxDevSensor].regenState = FAILED;
     sensor[maxDevSensor].faultCounter++;
@@ -147,7 +153,7 @@ void sensorHumidityTest() {
     // sensor[maxDevSensor] is the outlier
     DEBUG_PRINT(F("Sensor "));
     DEBUG_PRINT(maxDevSensor);
-    DEBUG_PRINTLN(F(" failed"));
+    DEBUG_PRINTLN(F(" failed humidity"));
     sensor[maxDevSensor].isValid = false;
     sensor[maxDevSensor].regenState = FAILED;
     sensor[maxDevSensor].faultCounter++;
@@ -216,7 +222,7 @@ bool regenSensorEnd(uint8_t idx) {
     Wire.read();
   }
   for (int i = 0; i < 5; i++) {
-    readSHT41(idx);
+    readSHT41(idx, true);
   }
 
   float testSensorTempError = fabs(sensor[idx].temperature - temperature);
@@ -249,7 +255,11 @@ void selectI2CChannel(uint8_t channel) {
 }
 
 // read a T&H sensor
-void readSHT41(uint8_t idx) {
+void readSHT41(uint8_t idx, bool force) {
+  if (!force && sensor[idx].regenState == REGEN ||
+      sensor[idx].regenState == FAILED) {
+    return; // don’t talk to it right now
+  }
   uint8_t address;
   if (idx == 0 || idx == 2) { // is this the 1st or 2nd sensor on the PCB
     address = SENSOR1_ADDR;
@@ -296,25 +306,25 @@ void readSHT41(uint8_t idx) {
 
 // sample all the sensors in the unit
 void sampleSensors(void) {
-  readSHT41(0);
+  readSHT41(0, false);
   if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
     Wire.clearWireTimeoutFlag();      // debug use, delete *************
     DEBUG_PRINTLN(F("T&H Sensor 0")); //*********************
     numberOfWireFaults++;
   }
-  readSHT41(1);
+  readSHT41(1, false);
   if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
     Wire.clearWireTimeoutFlag();      // debug use, delete *************
     DEBUG_PRINTLN(F("T&H Sensor 1")); //*********************
     numberOfWireFaults++;
   }
-  readSHT41(2);
+  readSHT41(2, false);
   if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
     Wire.clearWireTimeoutFlag();      // debug use, delete *************
     DEBUG_PRINTLN(F("T&H Sensor 2")); //*********************
     numberOfWireFaults++;
   }
-  readSHT41(3);
+  readSHT41(3, false);
   if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
     Wire.clearWireTimeoutFlag();      // debug use, delete *************
     DEBUG_PRINTLN(F("T&H Sensor 3")); //*********************

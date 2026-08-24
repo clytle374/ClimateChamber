@@ -157,10 +157,9 @@ extern unsigned long humidifierRunningTimer;
 extern unsigned long airPumpRunningTimer;
 extern unsigned long previousMillis;
 extern unsigned long dynamicInterval;
-extern bool minutesFunctionsRan;
 extern int lastMinute;
-extern bool hourFunctionsRan;
 extern int lastHour;
+extern int last6thHour;
 
 extern int setYear;
 extern int setMonth;

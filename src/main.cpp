@@ -1,209 +1,187 @@
-/* climate chamber controller.  Using DF robot temp and humidity sensor. cheap 128x64 6 pin spi u8x8 display.
-NTC.  Cheap ultrasonic huidifier element.  Some white LEDs for lighting
-Started out with one of those pelita junction 6 can refrigators.  
-It's designed to grow small batches of delicious mushrooms, use it for whatever.
-Code has been snipped, rewritten, modded, rewritten and modified again
-from examples across the internet, and many of them recycled beyond tracing 
-on several of my project.  Libaries have licenses.  GROK has both helped amd screwed me.
-Use it for whatever 
+/* climate chamber controller.  Using DF robot temp and humidity sensor. cheap
+128x64 6 pin spi u8x8 display. NTC.  Cheap ultrasonic huidifier element.  Some
+white LEDs for lighting Started out with one of those pelita junction 6 can
+refrigators. It's designed to grow small batches of delicious mushrooms, use it
+for whatever. Code has been snipped, rewritten, modded, rewritten and modified
+again from examples across the internet, and many of them recycled beyond
+tracing on several of my project.  Libaries have licenses.  GROK has both helped
+amd screwed me. Use it for whatever
 
-************************************** TOO DO LIST *********************************
+************************************** TOO DO LIST
+*********************************
 
 */
 
 #include "main.h"
+#include "debug.h"
 #include "display.h"
 #include "sensors.h"
-#include "debug.h"
 #include "utils.h"
 
-float temperature;  //I2C temp calculated
-float humidity;     //I2C huidity calculated
-float NTCtempHeatblock;   //where we put NTC reading
-float NTCtempHeatsink;    //where we put NTC reading
-float humiditySetpoint;   //target temp, moved here due to status display
-float ambientTemp = 100;  //MB ambient temp  I hope they are close
-double px[41];  //parameters
-int encoder;                 //stored encoder couunts
-bool button = 0;             // is button pressed?
-int currentParam = 0;        //what is the current position of the programming menu
-int lastPointer;             //save state to catch change
-int menuPointer = 10;        // move selector to parameters.  10 is for changing selected parameter currentParam 0-9 pick a digit
-bool edit = 1;               // sw back to edit mode
-int menuYes = 0;             // IDK, look into this  I thinkg this triggers the YES NO display in program memory
-int currentBaudPointer = 0;  // pointer for selecting baudrates from list, should be local?
-//control timer variables
-unsigned long controlTimer;              //control internal time
-unsigned long sensorTimer;               // time for reads
-unsigned long statusScreenTimer;         //pid loop time
-unsigned long humidifierRunningTimer;    //when did we start the humidifier
-unsigned long airPumpRunningTimer;       //when did we start the airpump
-unsigned long previousMillis = 0;        // Timestamp of the last execution
-unsigned long dynamicInterval = 1000UL;  // The current interval duration
-bool minutesFunctionsRan = 0;            // only run the minutes function once per true test
-int lastMinute = 0;                      // keep track of the last run on minutes scheduler
-bool hourFunctionsRan = 0;               // did we do hour functions this hour?
-int lastHour = 0;                        // keep track of the last hour function run
-int setYear;                             // year for setting parameters
-int setMonth;                            // month for setting parameters
-int setDay;                              // day for setting parameters
-int setHours;                            // hours for setting parameters
-int setMinutes;                          // minutes for setting parameters.
-bool airPumpRunning = false;             //airpump
+float temperature;       // I2C temp calculated
+float humidity;          // I2C huidity calculated
+float NTCtempHeatblock;  // where we put NTC reading
+float NTCtempHeatsink;   // where we put NTC reading
+float humiditySetpoint;  // target temp, moved here due to status display
+float ambientTemp = 100; // MB ambient temp  I hope they are close
+double px[41];           // parameters
+int encoder;             // stored encoder couunts
+bool button = 0;         // is button pressed?
+int currentParam = 0;    // what is the current position of the programming menu
+int lastPointer;         // save state to catch change
+int menuPointer = 10;    // move selector to parameters.  10 is for changing
+                         // selected parameter currentParam 0-9 pick a digit
+bool edit = 1;           // sw back to edit mode
+int menuYes = 0; // IDK, look into this  I thinkg this triggers the YES NO
+                 // display in program memory
+int currentBaudPointer =
+    0; // pointer for selecting baudrates from list, should be local?
+// control timer variables
+unsigned long controlTimer;             // control internal time
+unsigned long sensorTimer;              // time for reads
+unsigned long statusScreenTimer;        // pid loop time
+unsigned long humidifierRunningTimer;   // when did we start the humidifier
+unsigned long airPumpRunningTimer;      // when did we start the airpump
+unsigned long previousMillis = 0;       // Timestamp of the last execution
+unsigned long dynamicInterval = 1000UL; // The current interval duration
+int lastMinute = 0;          // keep track of the last run on minutes scheduler
+int lastHour = 25;            // keep track of the last hour function run
+int last6thHour = 1;               //keep track of the time for the last 4 pre day cycle
+int setYear;                 // year for setting parameters
+int setMonth;                // month for setting parameters
+int setDay;                  // day for setting parameters
+int setHours;                // hours for setting parameters
+int setMinutes;              // minutes for setting parameters.
+bool airPumpRunning = false; // airpump
 bool humidifierRunning = false;
-uint8_t fanSpeed = 100;      // current actual speed (global or static)
-uint8_t fanTarget = 25;      // Desired fan speed (updated from main control logic)
-bool inHeatMode = true;      //PID to setup for heat
-bool runProgramCode = 0;     //switch on the programming code
-bool runMenuCode = 0;        //switch on the menufunctions code
-bool StatusModeStarted = 0;  //are we going to be in status code?
-int menuSelector = 3;        //selecting menu options
-bool humidifierRan = 0;      //just for serial output as humidifer runs for a time shorter than update.
-bool useOuterI = true;       // are we inhibiting the PID I term to stop the endless windup problem
-//screen scrolling variables.
-int screenX = 0;  //locations for display scanning to not burn screen
-int screenY = 0;  //locations for display scanning to not burn screen
-int xShift;       //used to return a variable from a right justify function
+uint8_t fanSpeed = 100;  // current actual speed (global or static)
+uint8_t fanTarget = 25;  // Desired fan speed (updated from main control logic)
+bool inHeatMode = true;  // PID to setup for heat
+bool runProgramCode = 0; // switch on the programming code
+bool runMenuCode = 0;    // switch on the menufunctions code
+bool StatusModeStarted = 0; // are we going to be in status code?
+int menuSelector = 3;       // selecting menu options
+bool humidifierRan = 0; // just for serial output as humidifer runs for a time
+                        // shorter than update.
+bool useOuterI =
+    true; // are we inhibiting the PID I term to stop the endless windup problem
+// screen scrolling variables.
+int screenX = 0; // locations for display scanning to not burn screen
+int screenY = 0; // locations for display scanning to not burn screen
+int xShift;      // used to return a variable from a right justify function
 // ***** PID CONTROL VARIABLES *****
-float setpoint;  //target temp
-//double input = 21;    //zero will throw errors before first averaged sample
-float pwmDrive;        //output from PID for main element
-float heatBlockInput;  //output for the cool PID
-float PID1output;      //we're going to save the output of PID1 here and use it for deltaT and serial debugging
-unsigned long noSensorSince = 0;  //timer to start if e have no sensor data
-bool noSensorFault = false;       //fault state for no sensor data.
-uint16_t numberOfWireFaults = 0;  //logging the number of wire timeouts, crash hunting
+float setpoint; // target temp
+// double input = 21;    //zero will throw errors before first averaged sample
+float pwmDrive;       // output from PID for main element
+float heatBlockInput; // output for the cool PID
+float PID1output; // we're going to save the output of PID1 here and use it for
+                  // deltaT and serial debugging
+unsigned long noSensorSince = 0; // timer to start if e have no sensor data
+bool noSensorFault = false;      // fault state for no sensor data.
+uint16_t numberOfWireFaults =
+    0; // logging the number of wire timeouts, crash hunting
 
 // setup running averages
 RunningAverage AMBIENT_TEMP(5);
 RunningAverage HEATBLOCK_TEMP(5);
 RunningAverage HEATSINK_TEMP(5);
-//these are for the 4 SHT41A sensors
-RunningAverage CHAMBER_TEMP[4] = {
-  RunningAverage(5),
-  RunningAverage(5),
-  RunningAverage(5),
-  RunningAverage(5)
-};
-RunningAverage CHAMBER_HUM[4] = {
-  RunningAverage(5),
-  RunningAverage(5),
-  RunningAverage(5),
-  RunningAverage(5)
-};
-SensorState sensor[4];  // sensor[0] through sensor[4]
+// these are for the 4 SHT41A sensors
+RunningAverage CHAMBER_TEMP[4] = {RunningAverage(5), RunningAverage(5),
+                                  RunningAverage(5), RunningAverage(5)};
+RunningAverage CHAMBER_HUM[4] = {RunningAverage(5), RunningAverage(5),
+                                 RunningAverage(5), RunningAverage(5)};
+SensorState sensor[4]; // sensor[0] through sensor[4]
 
 displayMode_t displayMode;
 modeState_t modeState;
 
-
 // these are the texts for the menu.
-const char menuOptions[][4] = { "NO", "YES" };  //display for ON/OFF menu options
-//add the names of the 12 months to output to the OLED
-const char* const monthNames[] PROGMEM = { "Jan",
-                                           "Feb",
-                                           "Mar",
-                                           "Apr",
-                                           "May",
-                                           "Jun",
-                                           "Jul",
-                                           "Aug",
-                                           "Sep",
-                                           "Oct",
-                                           "Nov",
-                                           "Dec" };
-//name all the paramaters for the programming menu
-const char* const parameterNames[] PROGMEM = { "DEAD_ZONE",
+const char menuOptions[][4] = {"NO", "YES"}; // display for ON/OFF menu options
+// add the names of the 12 months to output to the OLED
+const char *const monthNames[] PROGMEM = {"Jan", "Feb", "Mar", "Apr",
+                                          "May", "Jun", "Jul", "Aug",
+                                          "Sep", "Oct", "Nov", "Dec"};
+// name all the paramaters for the programming menu
+const char *const parameterNames[] PROGMEM = {
+    "DEAD_ZONE",
 
-                                               "INCUBATE_TEMP",
-                                               "INCUBATE_HUMID",
-                                               "FRUIT_TEMP",
-                                               "FRUIT_HUMID",
-                                               "LIGHT_ON_HOURS",
-                                               "LIGHT_LEVEL",
-                                               "WATER_SECONDS",
-                                               "AIR_SECONDS",
-                                               "CH_P_HEAT",
-                                               "CH_I_HEAT",
-                                               "CH_D_HEAT",
-                                               "BL_P_HEAT",
-                                               "CH_P_COOL",
-                                               "CH_I_COOL",
-                                               "CH_D_COOL",
-                                               "BL_P_COOL",
-                                               "STATUS_SEC",
-                                               "SET_HOUR",
-                                               "SET_MINUTE",
-                                               "SET_MONTH",
-                                               "SET_DAY",
-                                               "SET_YEAR",
-                                               "SERIAL_SPEED",
-                                               "EXIT",
-                                               "DUMP_TO_SERIAL",
-                                               "LOAD_DEFAULTS",
-                                               "SAVE" };
+    "INCUBATE_TEMP",  "INCUBATE_HUMID", "FRUIT_TEMP",    "FRUIT_HUMID",
+    "LIGHT_ON_HOURS", "LIGHT_LEVEL",    "WATER_SECONDS", "AIR_SECONDS",
+    "CH_P_HEAT",      "CH_I_HEAT",      "CH_D_HEAT",     "BL_P_HEAT",
+    "CH_P_COOL",      "CH_I_COOL",      "CH_D_COOL",     "BL_P_COOL",
+    "STATUS_SEC",     "SET_HOUR",       "SET_MINUTE",    "SET_MONTH",
+    "SET_DAY",        "SET_YEAR",       "SERIAL_SPEED",  "EXIT",
+    "DUMP_TO_SERIAL", "LOAD_DEFAULTS",  "SAVE"};
 
+// these are the defaults for the parameters. I think?  GD am a ture
+const float defaultpx[30] PROGMEM = {DEAD_ZONE,
+                                     INCUBATE_TEMP,
+                                     INCUBATE_HUMIDITY_SET,
+                                     FRUIT_TEMP,
+                                     FRUIT_HUMIDITY_SET,
+                                     LIGHT_ON_HOURS,
+                                     LIGHT_LEVEL,
+                                     WATER_SECONDS,
+                                     AIR_SECONDS,
+                                     PID_KP_HEAT,
+                                     PID_KI_HEAT,
+                                     PID_KD_HEAT,
+                                     PID_P_BLOCK_HEAT,
+                                     PID_KP_COOL,
+                                     PID_KI_COOL,
+                                     PID_KD_COOL,
+                                     PID_P_BLOCK_COOL,
+                                     STATUS_SECONDS,
+                                     SET_HOURS,
+                                     SET_MINUTES,
+                                     SET_MONTH,
+                                     SET_DAY,
+                                     SET_YEAR,
+                                     SERIAL_SPEED,
+                                     0,
+                                     0,
+                                     0,
+                                     0};
 
-
-//these are the defaults for the parameters. I think?  GD am a ture
-const float defaultpx[30] PROGMEM = { DEAD_ZONE,
-                                      INCUBATE_TEMP,
-                                      INCUBATE_HUMIDITY_SET,
-                                      FRUIT_TEMP,
-                                      FRUIT_HUMIDITY_SET,
-                                      LIGHT_ON_HOURS,
-                                      LIGHT_LEVEL,
-                                      WATER_SECONDS,
-                                      AIR_SECONDS,
-                                      PID_KP_HEAT,
-                                      PID_KI_HEAT,
-                                      PID_KD_HEAT,
-                                      PID_P_BLOCK_HEAT,
-                                      PID_KP_COOL,
-                                      PID_KI_COOL,
-                                      PID_KD_COOL,
-                                      PID_P_BLOCK_COOL,
-                                      STATUS_SECONDS,
-                                      SET_HOURS,
-                                      SET_MINUTES,
-                                      SET_MONTH,
-                                      SET_DAY,
-                                      SET_YEAR,
-                                      SERIAL_SPEED,
-                                      0,
-                                      0,
-                                      0,
-                                      0 };
-
-//availble baud rates, did I miss anything important?
-const float baudRates[14] = { 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600,
-                              74800, 115200, 230400, 250000, 500000, 1000000 };
-
+// availble baud rates, did I miss anything important?
+const float baudRates[14] = {2400,   4800,   9600,   14400,  19200,
+                             28800,  38400,  57600,  74800,  115200,
+                             230400, 250000, 500000, 1000000};
 
 //***********************stopped switching move to header file here */
-                              // Create the u8x8 display                //
-//U8X8_SH1106_128X64_WINSTAR_4W_HW_SPI u8x8(/* cs=*/OLED_CS, /* dc=*/OLED_DC, /* reset=*/OLED_RESET);  // same as the NONAME variant, but uses updated SH1106 init sequence
+// Create the u8x8 display                //
+// U8X8_SH1106_128X64_WINSTAR_4W_HW_SPI u8x8(/* cs=*/OLED_CS, /* dc=*/OLED_DC,
+// /* reset=*/OLED_RESET);  // same as the NONAME variant, but uses updated
+// SH1106 init sequence
 
-// *****************one of these shoulf work for new display *************************
-//U8X8_SSD1327_EA_W128128_4W_HW_SPI u8x8(/* cs=*/OLED_CS, /* dc=*/OLED_DC, /* reset=*/OLED_RESET);   //try this
-//U8X8_SSD1327_WS_128X128_4W_HW_SPI u8x8(/* cs=*/OLED_CS, /* dc=*/OLED_DC, /* reset=*/OLED_RESET);   /or this if text is shifted
-//u8x8.setContrast(value);   //screen dimming, it doesn't belong here, it accepts 0-255
-// u8x8.sendF("ca", 0x81, 0x00);  //deeper dimming last input accepts 0x00 to 0x0F
+// *****************one of these shoulf work for new display
+// *************************
+// U8X8_SSD1327_EA_W128128_4W_HW_SPI u8x8(/* cs=*/OLED_CS, /* dc=*/OLED_DC, /*
+// reset=*/OLED_RESET);   //try this U8X8_SSD1327_WS_128X128_4W_HW_SPI u8x8(/*
+// cs=*/OLED_CS, /* dc=*/OLED_DC, /* reset=*/OLED_RESET);   /or this if text is
+// shifted u8x8.setContrast(value);   //screen dimming, it doesn't belong here,
+// it accepts 0-255
+// u8x8.sendF("ca", 0x81, 0x00);  //deeper dimming last input accepts 0x00 to
+// 0x0F
 
-EncoderButton eb1(ROTARY_PIN1, ROTARY_PIN2, BUTTON_PIN);  //sets up the encoder buton
+EncoderButton eb1(ROTARY_PIN1, ROTARY_PIN2,
+                  BUTTON_PIN); // sets up the encoder buton
 // setup the 2 PID functions, in cascade
-//Heat/cool and paramters are switched when switching HEAT/COOL function
-QuickPID chPID(&temperature, &PID1output, &setpoint);           //outer loop
-QuickPID hbPID(&NTCtempHeatblock, &pwmDrive, &heatBlockInput);  //inner loop
-
-
+// Heat/cool and paramters are switched when switching HEAT/COOL function
+QuickPID chPID(&temperature, &PID1output, &setpoint);          // outer loop
+QuickPID hbPID(&NTCtempHeatblock, &pwmDrive, &heatBlockInput); // inner loop
 
 void setup() {
-  //modeState = INCUBATE;  //start here for testing *********************TESTING****************
-  displayMode = RUN;                   // put display in run to start out      *************************
-  pinMode(ROTARY_PIN1, INPUT_PULLUP);  //************************added are they needed?*******************
-  pinMode(ROTARY_PIN2, INPUT_PULLUP);  //************************added are they needed?*******************
-  pinMode(BUTTON_PIN, INPUT_PULLUP);   //************************added are they needed?*******************
+  // modeState = INCUBATE;  //start here for testing
+  // *********************TESTING****************
+  displayMode =
+      RUN; // put display in run to start out      *************************
+  pinMode(ROTARY_PIN1, INPUT_PULLUP); //************************added are they
+                                      //needed?*******************
+  pinMode(ROTARY_PIN2, INPUT_PULLUP); //************************added are they
+                                      //needed?*******************
+  pinMode(BUTTON_PIN, INPUT_PULLUP);  //************************added are they
+                                      //needed?*******************
   pinMode(LIGHT_PIN1, OUTPUT);
   pinMode(LIGHT_PIN2, OUTPUT);
   pinMode(LIGHT_PIN3, OUTPUT);
@@ -222,34 +200,34 @@ void setup() {
   pinMode(ERROR_LED, OUTPUT);
 
   // === Peltier PWM on PD7 (OC2A) ===
-  pinMode(PELTIER_ON_PIN, OUTPUT);  // PD7
+  pinMode(PELTIER_ON_PIN, OUTPUT); // PD7
 
   // Timer 2: Fast PWM, non-inverting
   TCCR2A = (1 << COM2A1) | (1 << WGM21) | (1 << WGM20);
-  TCCR2B = (1 << CS20);  // Prescaler 1 → ~78 kHz
-  OCR2A = 255;           // Start at 0%
+  TCCR2B = (1 << CS20); // Prescaler 1 → ~78 kHz
+  OCR2A = 255;          // Start at 0%
 
   // === Fan PWMs ===
-  pinMode(FAN_PWM, OUTPUT);               // PD5 as output (OC1A)
-                                          // Timer 1: 8-bit Fast PWM, non-inverting on OC1A
-  TCCR1A = (1 << COM1A1) | (1 << WGM10);  // WGM11=0, WGM10=1  → 8-bit mode
-  TCCR1B = (1 << WGM12) | (1 << CS11);    // WGM12=1, prescaler 8
+  pinMode(FAN_PWM, OUTPUT); // PD5 as output (OC1A)
+                            // Timer 1: 8-bit Fast PWM, non-inverting on OC1A
+  TCCR1A = (1 << COM1A1) | (1 << WGM10); // WGM11=0, WGM10=1  → 8-bit mode
+  TCCR1B = (1 << WGM12) | (1 << CS11);   // WGM12=1, prescaler 8
 
-  OCR1A = 255;  // Start at 100%
+  OCR1A = 255; // Start at 100%
 
-
-
-
-  for (int i = 0; i < EXIT; i++) {  //this loop loads eeprom into parameters
-    //EEPROM.put(EEPROM_STORAGE_ADDRESS + (i*4) , px[i]);   //this loads eeprom from parameters use this for new baord  ******doesn't work******
-    EEPROM.get(EEPROM_STORAGE_ADDRESS + (i * 4), px[i]);  //this loads parameters from eeprom
+  for (int i = 0; i < EXIT; i++) { // this loop loads eeprom into parameters
+    // EEPROM.put(EEPROM_STORAGE_ADDRESS + (i*4) , px[i]);   //this loads eeprom
+    // from parameters use this for new baord  ******doesn't work******
+    EEPROM.get(EEPROM_STORAGE_ADDRESS + (i * 4),
+               px[i]); // this loads parameters from eeprom
   }
-  for (int i = EXIT; i < SAVE_TO_EEPROM; i++) {  //clear the commands parameters
+  for (int i = EXIT; i < SAVE_TO_EEPROM; i++) { // clear the commands parameters
     px[i] = 0;
   }
 
-  unsigned char value;                      // = EEPROM.read(PROFILE_TYPE_ADDRESS);
-  EEPROM.get(PROFILE_TYPE_ADDRESS, value);  // resume last state in case of power fail
+  unsigned char value; // = EEPROM.read(PROFILE_TYPE_ADDRESS);
+  EEPROM.get(PROFILE_TYPE_ADDRESS,
+             value); // resume last state in case of power fail
   if ((value == 0) || (value == 1)) {
     // Valid mode?
 
@@ -270,7 +248,6 @@ void setup() {
     humiditySetpoint = px[FRUIT_HUMIDITY_SETp];
   }
 
-
   // Initialize sensors
   for (uint8_t i = 0; i < 4; i++) {
     sensor[i].temperature = 0;
@@ -282,23 +259,21 @@ void setup() {
     sensor[i].faultCounter = 0;
   }
 
-
-
-
-  //DEBUG_BEGIN(115200);  //set serial speed
-  DEBUG_BEGIN(px[SERIAL_BAUD]);  //set serial speed
+  // DEBUG_BEGIN(115200);  //set serial speed
+  DEBUG_BEGIN(px[SERIAL_BAUD]); // set serial speed
   DEBUG_PRINTLN("hello");
 
-  //encoder switch events
+  // encoder switch events
   eb1.setClickHandler(onEb1Clicked);
   eb1.setEncoderHandler(onEb1Encoder);
   Wire.begin();
-  Wire.setWireTimeout(25000, true);  // 25 ms timeout, reset TWI hardware on timeout
-  u8x8.begin();                      //display startup
-                                     //u8x8.setPowerSave(0);
-  u8x8.setFlipMode(0);               // Flip the display 180 degrees
+  Wire.setWireTimeout(25000,
+                      true); // 25 ms timeout, reset TWI hardware on timeout
+  u8x8.begin();              // display startup
+                // u8x8.setPowerSave(0);
+  u8x8.setFlipMode(0); // Flip the display 180 degrees
 
-  //clear running averages
+  // clear running averages
   for (int i = 0; i < 4; i++) {
     CHAMBER_TEMP[i].clear();
     CHAMBER_HUM[i].clear();
@@ -307,13 +282,11 @@ void setup() {
   HEATBLOCK_TEMP.clear();
   HEATSINK_TEMP.clear();
 
-
   sampleSensors();
 
   if (temperature > setpoint) {
     inHeatMode = false;
   }
-
 
   chPID.SetOutputLimits(-100, 100);
   hbPID.SetOutputLimits(0, 100);
@@ -321,39 +294,46 @@ void setup() {
   hbPID.SetSampleTimeUs(PID_RATE);
   chPID.SetMode(chPID.Control::automatic);
   hbPID.SetMode(hbPID.Control::automatic);
-  chPID.SetAntiWindupMode(chPID.iAwMode::iAwClamp);  //anti-windup control
-  hbPID.SetAntiWindupMode(hbPID.iAwMode::iAwClamp);  //anti-windup control
+  chPID.SetAntiWindupMode(chPID.iAwMode::iAwClamp); // anti-windup control
+  hbPID.SetAntiWindupMode(hbPID.iAwMode::iAwClamp); // anti-windup control
 
-  updateUseOuterI();  // Set the initial state of useOuterI based on current error
-  swapPIDmode();      // set the
-  loadPIDs();         //loads the P,I,D values into the PIDs
+  updateUseOuterI(); // Set the initial state of useOuterI based on current
+                     // error
+  swapPIDmode();     // set the
+  loadPIDs();        // loads the P,I,D values into the PIDs
 
   selectI2CChannel(I2C_CH_RTC);
   setSyncProvider(getRtcTime);
   lightControl(false);
 }
 
-
-void loop() {                              //******************main loop************************
-  unsigned long currentMillis = millis();  // Get the current time
-  eb1.update();                            //button update
+void loop() { //******************main loop************************
+  unsigned long currentMillis = millis(); // Get the current time
+  eb1.update();                           // button update
   // Ask if outer PID loop is ready to execute
-  if (chPID.Compute()) {                                    //if PID1 runs, its timebase is controlled internally. Lets use the output to make a useable input for PID2
-    float deltaT = PID1output * 0.33f;                      //lets scale PID1's output to 0 to X degrees F over the current chamber temp
-    float ambientOffset = (setpoint - ambientTemp) * 0.1f;  //feed forward the ambient vs setpoint in increase control range on heatblock
-    heatBlockInput = temperature + deltaT + ambientOffset;  // Aim for delta from process
+  if (chPID.Compute()) { // if PID1 runs, its timebase is controlled internally.
+                         // Lets use the output to make a useable input for PID2
+    float deltaT =
+        PID1output * 0.33f; // lets scale PID1's output to 0 to X degrees F over
+                            // the current chamber temp
+    float ambientOffset = (setpoint - ambientTemp) *
+                          0.1f; // feed forward the ambient vs setpoint in
+                                // increase control range on heatblock
+    heatBlockInput =
+        temperature + deltaT + ambientOffset; // Aim for delta from process
   }
   // Ask if inner PID loop is ready to execute
-  if (hbPID.Compute()) {  //call PID2, if it returns that it ran, spit out debugging info
+  if (hbPID.Compute()) { // call PID2, if it returns that it ran, spit out
+                         // debugging info
 
     //*********************
 
-
     // Convert to 8-bit value (0-255)
-    uint8_t dutyCycle = (uint8_t)(pwmDrive * 2.55 + 0.5);  // +0.5 for better rounding
+    uint8_t dutyCycle =
+        (uint8_t)(pwmDrive * 2.55 + 0.5); // +0.5 for better rounding
 
     // Inverted for your hardware (100% PWM = OCR2A = 0)
-    SET_PWM(dutyCycle);  //OCR2A = 255 - dutyCycle;
+    SET_PWM(dutyCycle); // OCR2A = 255 - dutyCycle;
 
     DEBUG_PRINT(humidity);
     DEBUG_PRINT(F(","));
@@ -385,69 +365,82 @@ void loop() {                              //******************main loop********
     DEBUG_PRINT(useOuterI);
     DEBUG_PRINT(F(","));
     DEBUG_PRINTLN(numberOfWireFaults);
-    DEBUG_FLUSH();  // Keeps the CPU here until the talk is done
+    DEBUG_FLUSH(); // Keeps the CPU here until the talk is done
   }
-  //sample sensors every 1000 millis
+  // sample sensors every 1000 millis
   if (currentMillis - sensorTimer >= SENSOR_RATE) {
 
-    sensorTimer = currentMillis;  // this is rolloever safe acording to AI
+    sensorTimer = currentMillis; // this is rolloever safe acording to AI
     sampleSensors();
     digitalWrite(RUN_LED, !digitalRead(RUN_LED));
     setFanSpeed();
   }
-  //test if it's time to update the display
-  if (currentMillis - previousMillis >= dynamicInterval) {  //update DISPLAY
-    previousMillis = currentMillis;                         // Get current time once
+  // test if it's time to update the display
+  if (currentMillis - previousMillis >= dynamicInterval) { // update DISPLAY
+    previousMillis = currentMillis; // Get current time once
     displayUpdate();
   }
-  //test if it's time to timeout the status display.  Don't burn the OLED display
-  if (StatusModeStarted == true && currentMillis - statusScreenTimer >= (px[STATUS_SECONDSp] * 1000)) {  //*****lets setup a detailed status page display, we'll use this to time it out to not burn the screem****************
+  // test if it's time to timeout the status display.  Don't burn the OLED
+  // display
+  if (StatusModeStarted == true &&
+      currentMillis - statusScreenTimer >=
+          (px[STATUS_SECONDSp] *
+           1000)) { //*****lets setup a detailed status page display, we'll use
+                    //this to time it out to not burn the screem****************
     displayMode = RUN;
     StatusModeStarted = false;
   }
-  //run the general control loop every 5 seconds, 5000 miillis
-  if (currentMillis - controlTimer >= CONTROL_RATE) {  //run controls   5000
-    controlTimer = currentMillis;                      // this is rolloever safe acording to AI
-    //raise and lower the sun.
+  // run the general control loop every 5 seconds, 5000 miillis
+  if (currentMillis - controlTimer >= CONTROL_RATE) { // run controls   5000
+    controlTimer = currentMillis; // this is rolloever safe acording to AI
+    // raise and lower the sun.
     double minutesNow = (hour() * 60) + minute();
-    double lightMinutes = px[LIGHT_ON_HOURSp] * 30;                                                    //  number of minutes before and after noon light should be on hours * 60 / 2
-    if ((minutesNow > 720 - lightMinutes && minutesNow < 720 + lightMinutes) && modeState == FRUIT) {  //are we in fruit and is it time for lights? ************FIX THIS, LIGHT_TIME IGNORED**********
+    double lightMinutes =
+        px[LIGHT_ON_HOURSp] * 30; //  number of minutes before and after noon
+                                  //  light should be on hours * 60 / 2
+    if ((minutesNow > 720 - lightMinutes && minutesNow < 720 + lightMinutes) &&
+        modeState ==
+            FRUIT) { // are we in fruit and is it time for lights?
+                     // ************FIX THIS, LIGHT_TIME IGNORED**********
       lightControl(true);
     } else {
       lightControl(false);
     }
-    //lets do some stuff ever 5 MINUTES  **********change back to 5 minutes****************
-    if (minutesFunctionsRan == 0 && (minute() % 2 == 0) && minute() != lastMinute) {
+    // lets do some stuff every  MINUTE
+    if (minute() != lastMinute) {
       lastMinute = minute();
       minutesFunctions(currentMillis);
-      minutesFunctionsRan = 1;
-      //DEBUG_PRINTLN(F("minute functions ran"));
-    } else {
-      minutesFunctionsRan = 0;
-    }
-    //lets do some stuff ever hour
-    if (hourFunctionsRan == 0 && hour() != lastHour) {
+      // DEBUG_PRINTLN(F("minute functions ran"));
+    } 
+    // lets do some stuff ever hour
+    if (hour() != lastHour) {
       lastHour = hour();
       hourFunctions(currentMillis);
-      hourFunctionsRan = 1;
-      //DEBUG_PRINTLN(F("hour functions ran"));
-    } else {
-      hourFunctionsRan = 0;
+      // DEBUG_PRINTLN(F("hour functions ran"));
     }
+      if (hour() != last6thHour && hour() % 6 == 0){
+       last6thHour = hour();
+       SixHourFunctions();
+      }
+
     detectHCmode();
     updateUseOuterI();
-    //setFanSpeed(40);
+    // setFanSpeed(40);
   }
-  if (runMenuCode == true) {  //code for changeing function withing the menu
+  if (runMenuCode == true) { // code for changeing function withing the menu
     menuMenu();
   }
-  if (runProgramCode == true) {  //are we in programing mode?
+  if (runProgramCode == true) { // are we in programing mode?
     programmingMenu();
   }
-  if (humidifierRunning && (currentMillis - humidifierRunningTimer >= (px[WATER_SECONDSp] * 1000))) {  //shutdown humidifier when time is up
+  if (humidifierRunning &&
+      (currentMillis - humidifierRunningTimer >=
+       (px[WATER_SECONDSp] * 1000))) { // shutdown humidifier when time is up
     humidifierRunning = false;
   }
-  if (airPumpRunning && (currentMillis - airPumpRunningTimer >= (px[AIR_SECONDSp] * 1000))) {  //shutdown the airpump when time is up
+  if (airPumpRunning &&
+      (currentMillis - airPumpRunningTimer >=
+       (px[AIR_SECONDSp] * 1000))) { // shutdown the airpump when time is up
     airPumpRunning = false;
   }
 
@@ -457,7 +450,7 @@ void loop() {                              //******************main loop********
   // **********************  status LEDS *********************
   digitalWrite(H2O_LED, humidifierRunning);
   digitalWrite(AIR_LED, airPumpRunning);
-  //regenMaint();  //check and see if a sensor is done with regeneration
+  // regenMaint();  //check and see if a sensor is done with regeneration
 }
 
 // detect if we need to swap between heat and cool mode
@@ -465,7 +458,7 @@ void detectHCmode() {
 
   if (PID1output > 0) {
     // Temperature is too low, definitively needs heat
-    if (inHeatMode == false) {  // Only print/switch if changing state
+    if (inHeatMode == false) { // Only print/switch if changing state
       DEBUG_PRINTLN(F("Force to Heat Mode"));
       inHeatMode = true;
       swapPIDmode();
@@ -473,7 +466,7 @@ void detectHCmode() {
   }
   if (PID1output < 0) {
     // Temperature is too high, definitively needs cooling
-    if (inHeatMode == true) {  // Only print/switch if changing state
+    if (inHeatMode == true) { // Only print/switch if changing state
       DEBUG_PRINTLN(F("Force to Cool Mode"));
       inHeatMode = false;
       swapPIDmode();
@@ -481,7 +474,8 @@ void detectHCmode() {
   }
 }
 
-//detect if we are withing half of deadzone from target to change loop agressiveness
+// detect if we are withing half of deadzone from target to change loop
+// agressiveness
 void updateUseOuterI() {
   static bool lastUseOuterI = false;
 
@@ -511,12 +505,14 @@ void loadPIDs(void) {
   float kp, ki, kd, blockP;
 
   if (inHeatMode) {
-    kp = useOuterI ? px[PID_KP_HEATp] : px[PID_KP_HEATp] * 1.0f;  //was 1.5, testing no boost
+    kp = useOuterI ? px[PID_KP_HEATp]
+                   : px[PID_KP_HEATp] * 1.0f; // was 1.5, testing no boost
     ki = useOuterI ? px[PID_KI_HEATp] : 0.0f;
     kd = px[PID_KD_HEATp];
     blockP = px[PID_P_BLOCK_HEATp];
   } else {
-    kp = useOuterI ? px[PID_KP_COOLp] : px[PID_KP_COOLp] * 1.0f;  //was 1.5, testing no boost
+    kp = useOuterI ? px[PID_KP_COOLp]
+                   : px[PID_KP_COOLp] * 1.0f; // was 1.5, testing no boost
     ki = useOuterI ? px[PID_KI_COOLp] : 0.0f;
     kd = px[PID_KD_COOLp];
     blockP = px[PID_P_BLOCK_COOLp];
@@ -524,8 +520,7 @@ void loadPIDs(void) {
 
   chPID.SetTunings(kp, ki, kd);
 
-
-  hbPID.SetTunings(blockP, 0, 0);  // Inner loop stays simple
+  hbPID.SetTunings(blockP, 0, 0); // Inner loop stays simple
 }
 
 // handle swapping the inner loop direction and safely switching the relay
@@ -535,46 +530,49 @@ void swapPIDmode(void) {
   delay(100);
 
   // 2. Stop both PIDs
-  //chPID.SetMode(chPID.Control::manual);
+  // chPID.SetMode(chPID.Control::manual);
   hbPID.SetMode(hbPID.Control::manual);
 
   // 3. Flip the relay
   digitalWrite(PELTIER_REV_PIN, !inHeatMode);
-  delay(80);  // Give relay time to settle
+  delay(80); // Give relay time to settle
 
   // 4. Set correct direction for PIDs
-  //chPID.SetControllerDirection(inHeatMode ? chPID.Action::direct : chPID.Action::reverse);
-  hbPID.SetControllerDirection(inHeatMode ? hbPID.Action::direct : hbPID.Action::reverse);
+  // chPID.SetControllerDirection(inHeatMode ? chPID.Action::direct :
+  // chPID.Action::reverse);
+  hbPID.SetControllerDirection(inHeatMode ? hbPID.Action::direct
+                                          : hbPID.Action::reverse);
 
   // 5. Load the correct P/I/D values for this mode + useOuterI state
   loadPIDs();
 
   hbPID.Reset();
 
-
   // 6. Restart the PIDs
-  //chPID.SetMode(chPID.Control::automatic);
+  // chPID.SetMode(chPID.Control::automatic);
   hbPID.SetMode(hbPID.Control::automatic);
 }
-//set the heatsink fan speed.
+// set the heatsink fan speed.
 void setFanSpeed() {
   uint8_t target = constrain(pwmDrive, 35, 100);
 
-  const uint8_t rampRate = 1;  // Same rate up and down
+  const uint8_t rampRate = 1; // Same rate up and down
 
   if (target > fanSpeed) {
     fanSpeed += rampRate * 3;
-    if (fanSpeed > target) fanSpeed = target;
+    if (fanSpeed > target)
+      fanSpeed = target;
   } else if (target < fanSpeed) {
     fanSpeed -= rampRate;
-    if (fanSpeed < target) fanSpeed = target;
+    if (fanSpeed < target)
+      fanSpeed = target;
   }
 
   SET_FAN(fanSpeed);
-  //OCR1A = (uint8_t)(fanSpeed * 2.55f + 0.5f);
+  // OCR1A = (uint8_t)(fanSpeed * 2.55f + 0.5f);
 }
 
-//function to handle things every minute, or 5 minutes.
+// function to handle things every minute, or 5 minutes.
 void minutesFunctions(unsigned long now) {
   static uint8_t stepIndex = 0;
   if (modeState == FRUIT) {
@@ -593,31 +591,29 @@ void minutesFunctions(unsigned long now) {
     airPumpRunningTimer = now;
     airPumpRunning = true;
   }
-  switch(stepIndex){
-  case 0: 
-  sensorTempTest();
-  break;
-  case 1:  
-  sensorHumidityTest();
-  break;
-  case 2:
-  sensorMaint();
-  break;
+  switch (stepIndex) {
+  case 0:
+    sensorTempTest();
+    sensorHumidityTest();
+    break;
+  case 1:
+    sensorMaint();
+    break;
   }
   stepIndex++;
-  if (stepIndex >= 2){
+  if (stepIndex >= 2) {
     stepIndex = 0;
   }
 }
 
-//function to handle things every hour
+// function to handle things every hour
 void hourFunctions(unsigned long now) {
   airPumpRunningTimer = now;
   airPumpRunning = true;
-  setSyncProvider(getRtcTime);  // get the time from the RTC
+  setSyncProvider(getRtcTime); // get the time from the RTC
 }
 
-//turn the lighting on/off and set intensity
+// turn the lighting on/off and set intensity
 void lightControl(bool state) {
   if (state) {
 
