@@ -7,9 +7,12 @@ again from examples across the internet, and many of them recycled beyond
 tracing on several of my project.  Libaries have licenses.  GROK has both helped
 amd screwed me. Use it for whatever
 
-************************************** TOO DO LIST
-*********************************
+************************************** TOO DO
+LIST********************************* count I2C faults count sensor faults
 
+
+night day temp and humidity cycles.
+CATCH MOSFET RUNAWAY
 */
 
 #include "main.h"
@@ -44,14 +47,14 @@ unsigned long humidifierRunningTimer;   // when did we start the humidifier
 unsigned long airPumpRunningTimer;      // when did we start the airpump
 unsigned long previousMillis = 0;       // Timestamp of the last execution
 unsigned long dynamicInterval = 1000UL; // The current interval duration
-int lastMinute = 0;          // keep track of the last run on minutes scheduler
-int lastHour = 25;            // keep track of the last hour function run
-int last6thHour = 1;               //keep track of the time for the last 4 pre day cycle
-int setYear;                 // year for setting parameters
-int setMonth;                // month for setting parameters
-int setDay;                  // day for setting parameters
-int setHours;                // hours for setting parameters
-int setMinutes;              // minutes for setting parameters.
+int lastMinute = 0;  // keep track of the last run on minutes scheduler
+int lastHour = 25;   // keep track of the last hour function run
+int last6thHour = 1; // keep track of the time for the last 4 pre day cycle
+int setYear;         // year for setting parameters
+int setMonth;        // month for setting parameters
+int setDay;          // day for setting parameters
+int setHours;        // hours for setting parameters
+int setMinutes;      // minutes for setting parameters.
 bool airPumpRunning = false; // airpump
 bool humidifierRunning = false;
 uint8_t fanSpeed = 100;  // current actual speed (global or static)
@@ -76,6 +79,8 @@ float pwmDrive;       // output from PID for main element
 float heatBlockInput; // output for the cool PID
 float PID1output; // we're going to save the output of PID1 here and use it for
                   // deltaT and serial debugging
+float heatblockDeltaT =
+    0; // for tracking the delta T of the heatblock to catch mosfet shorted.
 unsigned long noSensorSince = 0; // timer to start if e have no sensor data
 bool noSensorFault = false;      // fault state for no sensor data.
 uint16_t numberOfWireFaults =
@@ -85,6 +90,7 @@ uint16_t numberOfWireFaults =
 RunningAverage AMBIENT_TEMP(5);
 RunningAverage HEATBLOCK_TEMP(5);
 RunningAverage HEATSINK_TEMP(5);
+RunningAverage PWM_DRIVE(5);
 // these are for the 4 SHT41A sensors
 RunningAverage CHAMBER_TEMP[4] = {RunningAverage(5), RunningAverage(5),
                                   RunningAverage(5), RunningAverage(5)};
@@ -177,11 +183,11 @@ void setup() {
   displayMode =
       RUN; // put display in run to start out      *************************
   pinMode(ROTARY_PIN1, INPUT_PULLUP); //************************added are they
-                                      //needed?*******************
+                                      // needed?*******************
   pinMode(ROTARY_PIN2, INPUT_PULLUP); //************************added are they
-                                      //needed?*******************
+                                      // needed?*******************
   pinMode(BUTTON_PIN, INPUT_PULLUP);  //************************added are they
-                                      //needed?*******************
+                                      // needed?*******************
   pinMode(LIGHT_PIN1, OUTPUT);
   pinMode(LIGHT_PIN2, OUTPUT);
   pinMode(LIGHT_PIN3, OUTPUT);
@@ -270,8 +276,9 @@ void setup() {
   Wire.setWireTimeout(25000,
                       true); // 25 ms timeout, reset TWI hardware on timeout
   u8x8.begin();              // display startup
-                // u8x8.setPowerSave(0);
-  u8x8.setFlipMode(0); // Flip the display 180 degrees
+                             // u8x8.setPowerSave(0);
+  u8x8.setContrast(0);       // turned down for display life
+  u8x8.setFlipMode(0);       // Flip the display 180 degrees
 
   // clear running averages
   for (int i = 0; i < 4; i++) {
@@ -281,6 +288,7 @@ void setup() {
   AMBIENT_TEMP.clear();
   HEATBLOCK_TEMP.clear();
   HEATSINK_TEMP.clear();
+  PWM_DRIVE.clear();
 
   sampleSensors();
 
@@ -324,14 +332,14 @@ void loop() { //******************main loop************************
   }
   // Ask if inner PID loop is ready to execute
   if (hbPID.Compute()) { // call PID2, if it returns that it ran, spit out
-                         // debugging info
+    // debugging info
 
     //*********************
 
     // Convert to 8-bit value (0-255)
     uint8_t dutyCycle =
         (uint8_t)(pwmDrive * 2.55 + 0.5); // +0.5 for better rounding
-
+    PWM_DRIVE.addValue(pwmDrive);
     // Inverted for your hardware (100% PWM = OCR2A = 0)
     SET_PWM(dutyCycle); // OCR2A = 255 - dutyCycle;
 
@@ -381,12 +389,12 @@ void loop() { //******************main loop************************
     displayUpdate();
   }
   // test if it's time to timeout the status display.  Don't burn the OLED
-  // display
   if (StatusModeStarted == true &&
       currentMillis - statusScreenTimer >=
           (px[STATUS_SECONDSp] *
            1000)) { //*****lets setup a detailed status page display, we'll use
-                    //this to time it out to not burn the screem****************
+                    // this to time it out to not burn the
+                    // screem****************
     displayMode = RUN;
     StatusModeStarted = false;
   }
@@ -411,17 +419,18 @@ void loop() { //******************main loop************************
       lastMinute = minute();
       minutesFunctions(currentMillis);
       // DEBUG_PRINTLN(F("minute functions ran"));
-    } 
+    }
     // lets do some stuff ever hour
     if (hour() != lastHour) {
       lastHour = hour();
       hourFunctions(currentMillis);
       // DEBUG_PRINTLN(F("hour functions ran"));
     }
-      if (hour() != last6thHour && hour() % 6 == 0){
-       last6thHour = hour();
-       SixHourFunctions();
-      }
+    // lets do some stuff every 6 hours, daily regen of sensors
+    if (hour() != last6thHour && hour() % 6 == 0) {
+      last6thHour = hour();
+      SixHourFunctions();
+    }
 
     detectHCmode();
     updateUseOuterI();
@@ -627,4 +636,15 @@ void lightControl(bool state) {
     digitalWrite(LIGHT_PIN3, LOW);
     digitalWrite(LIGHT_PIN4, LOW);
   }
+}
+
+void checkForMosfetFailure(void) {
+  static float heatblockLastTemp = 0;
+  heatblockDeltaT = heatblockLastTemp - NTCtempHeatblock;
+  if (PWM_DRIVE.getAverage() < 5) {
+    if (fabs(heatblockDeltaT) > 1) {
+      // bad things are happening, shut it down, lock it out.  
+    }
+  }
+   heatblockLastTemp = NTCtempHeatblock;
 }

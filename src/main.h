@@ -157,6 +157,7 @@ extern unsigned long humidifierRunningTimer;
 extern unsigned long airPumpRunningTimer;
 extern unsigned long previousMillis;
 extern unsigned long dynamicInterval;
+extern float heatblockDeltaT;
 extern int lastMinute;
 extern int lastHour;
 extern int last6thHour;
@@ -196,6 +197,7 @@ extern uint16_t numberOfWireFaults;
 extern RunningAverage AMBIENT_TEMP;
 extern RunningAverage HEATBLOCK_TEMP;
 extern RunningAverage HEATSINK_TEMP;
+extern RunningAverage PWM_DRIVE;
 //these are for the 4 SHT41A sensors
 extern RunningAverage CHAMBER_TEMP[4]; 
 extern RunningAverage CHAMBER_HUM[4]; 
@@ -257,3 +259,6 @@ void setFanSpeed();
 void minutesFunctions(unsigned long now);
 void hourFunctions(unsigned long now);
 void lightControl(bool state);
+
+void checkForMosfetFailure(void);
+
