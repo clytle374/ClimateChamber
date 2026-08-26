@@ -27,6 +27,7 @@ float NTCtempHeatblock;  // where we put NTC reading
 float NTCtempHeatsink;   // where we put NTC reading
 float humiditySetpoint;  // target temp, moved here due to status display
 float ambientTemp = 100; // MB ambient temp  I hope they are close
+float heatblockLastTemp; // for mosfet short detection
 double px[41];           // parameters
 int encoder;             // stored encoder couunts
 bool button = 0;         // is button pressed?
@@ -90,7 +91,7 @@ uint16_t numberOfWireFaults =
 RunningAverage AMBIENT_TEMP(5);
 RunningAverage HEATBLOCK_TEMP(5);
 RunningAverage HEATSINK_TEMP(5);
-RunningAverage PWM_DRIVE(5);
+RunningAverage PWM_DRIVE(2);
 // these are for the 4 SHT41A sensors
 RunningAverage CHAMBER_TEMP[4] = {RunningAverage(5), RunningAverage(5),
                                   RunningAverage(5), RunningAverage(5)};
@@ -277,7 +278,7 @@ void setup() {
                       true); // 25 ms timeout, reset TWI hardware on timeout
   u8x8.begin();              // display startup
                              // u8x8.setPowerSave(0);
-  u8x8.setContrast(0);       // turned down for display life
+  u8x8.setContrast(50);      // turned down for display life
   u8x8.setFlipMode(0);       // Flip the display 180 degrees
 
   // clear running averages
@@ -313,6 +314,10 @@ void setup() {
   selectI2CChannel(I2C_CH_RTC);
   setSyncProvider(getRtcTime);
   lightControl(false);
+  for (int i = 0; i < 5; i++) {
+    sampleSensors();
+    delay(100);
+  }
 }
 
 void loop() { //******************main loop************************
@@ -434,6 +439,7 @@ void loop() { //******************main loop************************
 
     detectHCmode();
     updateUseOuterI();
+    checkForMosfetFailure();
     // setFanSpeed(40);
   }
   if (runMenuCode == true) { // code for changeing function withing the menu
@@ -638,13 +644,42 @@ void lightControl(bool state) {
   }
 }
 
+// test if system seems mormal
 void checkForMosfetFailure(void) {
-  static float heatblockLastTemp = 0;
-  heatblockDeltaT = heatblockLastTemp - NTCtempHeatblock;
+  float heatblockDeltaT = heatblockLastTemp - NTCtempHeatblock;
   if (PWM_DRIVE.getAverage() < 5) {
     if (fabs(heatblockDeltaT) > 1) {
-      // bad things are happening, shut it down, lock it out.  
+      DEBUG_PRINTLN(F("MOSFET FAILURE SUSPECTED"));
+      confirmMosfetShort(); // are things are happening?
     }
   }
-   heatblockLastTemp = NTCtempHeatblock;
+}
+
+// confirm runaway condition
+void confirmMosfetShort(void) {
+  int faultCount = 50;
+  OCR2A = 255; // stop the peltier drive
+  while (1) {
+    if ((inHeatMode && (NTCtempHeatblock > heatblockLastTemp)) ||
+        (!inHeatMode && (NTCtempHeatblock < heatblockLastTemp))) {
+      faultCount++;
+      if (faultCount > 100) {
+         DEBUG_PRINTLN(F("MOSFET FAILED"));
+        scuttleShip();
+      }
+    } else {
+      faultCount--;
+      if (faultCount <= 20) {
+        return;
+      }
+    }
+    sampleSensors();
+
+    delay(1000);
+  }
+}
+
+// safe unit if peltier is running away
+void scuttleShip(void) {
+  ; // do things
 }

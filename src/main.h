@@ -194,6 +194,8 @@ extern unsigned long noSensorSince;
 extern bool noSensorFault;
 extern uint16_t numberOfWireFaults;
 
+extern float heatblockLastTemp;
+
 extern RunningAverage AMBIENT_TEMP;
 extern RunningAverage HEATBLOCK_TEMP;
 extern RunningAverage HEATSINK_TEMP;
@@ -261,4 +263,6 @@ void hourFunctions(unsigned long now);
 void lightControl(bool state);
 
 void checkForMosfetFailure(void);
+void confirmMosfetShort(void);
+void scuttleShip(void);
 
