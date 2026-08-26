@@ -12,7 +12,7 @@ LIST********************************* count I2C faults count sensor faults
 
 
 night day temp and humidity cycles.
-CATCH MOSFET RUNAWAY
+CATCH MOSFET RUNAWAY, safe system, pet watchdog. 
 */
 
 #include "main.h"
@@ -179,7 +179,8 @@ QuickPID chPID(&temperature, &PID1output, &setpoint);          // outer loop
 QuickPID hbPID(&NTCtempHeatblock, &pwmDrive, &heatBlockInput); // inner loop
 
 void setup() {
-  // modeState = INCUBATE;  //start here for testing
+  MCUSR = 0;            //clearing watchdog
+  wdt_disable(); // disable the watchdog
   // *********************TESTING****************
   displayMode =
       RUN; // put display in run to start out      *************************
@@ -318,11 +319,19 @@ void setup() {
     sampleSensors();
     delay(100);
   }
+  /*   //doesn't work 
+  if (MCUSR & _BV(WDRF)) {
+    DEBUG_PRINTLN("Watchdog got me"); // last reset was watchdog 
+  }
+  MCUSR = 0;
+  */
+  wdt_enable(WDTO_4S); // arm the watchdog
 }
 
 void loop() { //******************main loop************************
   unsigned long currentMillis = millis(); // Get the current time
   eb1.update();                           // button update
+  wdt_reset();                            // Good doggy
   // Ask if outer PID loop is ready to execute
   if (chPID.Compute()) { // if PID1 runs, its timebase is controlled internally.
                          // Lets use the output to make a useable input for PID2
@@ -436,7 +445,7 @@ void loop() { //******************main loop************************
       last6thHour = hour();
       SixHourFunctions();
     }
-
+    //do some other things every 5 seconds CONTROL_RATE
     detectHCmode();
     updateUseOuterI();
     checkForMosfetFailure();
@@ -657,14 +666,14 @@ void checkForMosfetFailure(void) {
 
 // confirm runaway condition
 void confirmMosfetShort(void) {
-  int faultCount = 50;
+  int faultCount = 60;
   OCR2A = 255; // stop the peltier drive
   while (1) {
     if ((inHeatMode && (NTCtempHeatblock > heatblockLastTemp)) ||
         (!inHeatMode && (NTCtempHeatblock < heatblockLastTemp))) {
       faultCount++;
       if (faultCount > 100) {
-         DEBUG_PRINTLN(F("MOSFET FAILED"));
+        DEBUG_PRINTLN(F("MOSFET FAILED"));
         scuttleShip();
       }
     } else {
@@ -673,8 +682,10 @@ void confirmMosfetShort(void) {
         return;
       }
     }
+    DEBUG_PRINT(F("MOSFET FAULT COUNT "));
+    DEBUG_PRINTLN(faultCount);
     sampleSensors();
-
+    wdt_reset();                            // Good doggy
     delay(1000);
   }
 }

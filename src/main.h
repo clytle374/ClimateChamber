@@ -12,6 +12,7 @@
 //#include "climateChamber.h"
 #include "RunningAverage.h"  ///https://github.com/RobTillaart/RunningAverage/tree/master
 #include <avr/pgmspace.h>   //GROKS says so, works without 
+#include <avr/wdt.h>        //watchdog 
 
 
 // ***** CONSTANTS *****
