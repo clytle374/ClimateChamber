@@ -360,7 +360,7 @@ void sampleSensors(void) {
   HEATBLOCK_TEMP.addValue(NTCread(NTC_HEATBLOCK_PIN));
   HEATSINK_TEMP.addValue(NTCread(NTC_HEATSINK_PIN));
 
-  heatblockLastTemp = NTCtempHeatsink;   //keep value for mosfet fail detect 
+  heatblockLastTemp = NTCtempHeatblock;   //keep value for mosfet fail detect 
   ambientTemp = AMBIENT_TEMP.getAverage();
   NTCtempHeatblock = HEATBLOCK_TEMP.getAverage();
   NTCtempHeatsink = HEATSINK_TEMP.getAverage();

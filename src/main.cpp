@@ -12,7 +12,32 @@ LIST********************************* count I2C faults count sensor faults
 
 
 night day temp and humidity cycles.
-CATCH MOSFET RUNAWAY, safe system, pet watchdog. 
+CATCH MOSFET RUNAWAY, safe system, pet watchdog.
+
+make sure the relay defualts to cool mode in relaxed state
+
+What an NTC failure actually looks like on your divider (10k pull-up, NTC to
+GND):
+
+Open / fallen lug — ADC ≈ 1023, computed temp goes absurdly cold. Inner loop
+thinks the block is ice and slams PWM to 100. Fuse is what saves the stack.
+Short — ADC ≈ 0, 1023/ADC blows up, PID gets garbage, same slam.
+NTC off the metal, hanging in air — plausible mid-range numbers, just sluggish.
+Inner loop overdrives the 6061 until the block fuse opens. This one looks
+“healthy” if you only check for NaN. Blower dead, sink NTC still attached —
+block climbs, sink does not. Sink fuse may never blow; block fuse should.
+
+Rules I would put in before the inner PID, kept dumb:
+
+Raw ADC must be ~40–1000 or the sample is discarded.
+Computed temp must stay inside something like 14–176 °F. Software trip well
+below the fuse — say PWM off at 120 °F / 49 °C on either NTC. Slew cap: that
+block cannot jump 20 °F in a 1 s sample. If PWM has been >30 % for half a minute
+and the block is not moving the expected direction, treat it as NTC-off or
+drive-dead. On any NTC fault: PWM off, do not throw the reverse relay, ERROR LED
+on. Leave pump and humidifier alone.
+
+
 */
 
 #include "main.h"
@@ -179,7 +204,7 @@ QuickPID chPID(&temperature, &PID1output, &setpoint);          // outer loop
 QuickPID hbPID(&NTCtempHeatblock, &pwmDrive, &heatBlockInput); // inner loop
 
 void setup() {
-  MCUSR = 0;            //clearing watchdog
+  MCUSR = 0;     // clearing watchdog
   wdt_disable(); // disable the watchdog
   // *********************TESTING****************
   displayMode =
@@ -248,6 +273,7 @@ void setup() {
       setpoint = px[INCUBATE_TEMPp];
       humiditySetpoint = px[INCUBATE_HUMIDITY_SETp];
     }
+
   } else {
     // Default to fruit if eeprom invalid
     EEPROM.put(PROFILE_TYPE_ADDRESS, 0);
@@ -319,12 +345,13 @@ void setup() {
     sampleSensors();
     delay(100);
   }
-  /*   //doesn't work 
-  if (MCUSR & _BV(WDRF)) {
-    DEBUG_PRINTLN("Watchdog got me"); // last reset was watchdog 
-  }
-  MCUSR = 0;
-  */
+  DEBUG_PRINT(F("SPHUM="));
+  DEBUG_PRINTLN(humiditySetpoint);
+  DEBUG_PRINT(F("SPTEMP="));
+  DEBUG_PRINTLN(setpoint);
+  DEBUG_PRINT(F("HEATMODE="));
+  DEBUG_PRINTLN(inHeatMode);
+
   wdt_enable(WDTO_4S); // arm the watchdog
 }
 
@@ -357,37 +384,17 @@ void loop() { //******************main loop************************
     // Inverted for your hardware (100% PWM = OCR2A = 0)
     SET_PWM(dutyCycle); // OCR2A = 255 - dutyCycle;
 
-    DEBUG_PRINT(humidity);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(inHeatMode);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(temperature);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(setpoint);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(PID1output);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(NTCtempHeatblock);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(heatBlockInput);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(pwmDrive, 0);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(NTCtempHeatsink);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(humidifierRan);
-    humidifierRan = 0;
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(airPumpRunning);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(fanSpeed);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(ambientTemp);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINT(useOuterI);
-    DEBUG_PRINT(F(","));
-    DEBUG_PRINTLN(numberOfWireFaults);
-    DEBUG_FLUSH(); // Keeps the CPU here until the talk is done
+    DEBUG_PRINT(F("SYSHUM="));
+    DEBUG_PRINTLN(humidity);
+    DEBUG_PRINT(F("SYSTEMP="));
+    DEBUG_PRINTLN(temperature);
+    DEBUG_PRINT(F("PWM="));
+    DEBUG_PRINTLN(pwmDrive);
+    DEBUG_PRINT(F("FAN="));
+    DEBUG_PRINTLN(fanSpeed);
+    DEBUG_PRINT(F("PIDOUT="));
+    DEBUG_PRINTLN(PID1output);
+    // DEBUG_FLUSH(); // Keeps the CPU here until the talk is done
   }
   // sample sensors every 1000 millis
   if (currentMillis - sensorTimer >= SENSOR_RATE) {
@@ -445,11 +452,11 @@ void loop() { //******************main loop************************
       last6thHour = hour();
       SixHourFunctions();
     }
-    //do some other things every 5 seconds CONTROL_RATE
+    // do some other things every 5 seconds CONTROL_RATE
     detectHCmode();
     updateUseOuterI();
-    checkForMosfetFailure();
-    // setFanSpeed(40);
+    // checkForMosfetFailure();
+    //  setFanSpeed(40);
   }
   if (runMenuCode == true) { // code for changeing function withing the menu
     menuMenu();
@@ -485,6 +492,7 @@ void detectHCmode() {
     if (inHeatMode == false) { // Only print/switch if changing state
       DEBUG_PRINTLN(F("Force to Heat Mode"));
       inHeatMode = true;
+      DEBUG_PRINT(F("HEATMODE=1"));
       swapPIDmode();
     }
   }
@@ -493,6 +501,7 @@ void detectHCmode() {
     if (inHeatMode == true) { // Only print/switch if changing state
       DEBUG_PRINTLN(F("Force to Cool Mode"));
       inHeatMode = false;
+      DEBUG_PRINT(F("HEATMODE=0"));
       swapPIDmode();
     }
   }
@@ -508,11 +517,13 @@ void updateUseOuterI() {
   // Turn I ON when error gets small enough (with some hysteresis)
   if (!useOuterI && error < px[DEAD_ZONEp] * 2) {
     useOuterI = true;
+    DEBUG_PRINTLN(F("OUTERION=1"));
   }
 
   // Turn I OFF only when error gets clearly larger
   if (useOuterI && error > px[DEAD_ZONEp] * 2) {
     useOuterI = false;
+    DEBUG_PRINTLN(F("OUTERION=0"));
   }
 
   // Only update PID gains if the state actually changed
@@ -550,7 +561,7 @@ void loadPIDs(void) {
 // handle swapping the inner loop direction and safely switching the relay
 void swapPIDmode(void) {
   // 1. Kill the output hard (important with inverted PWM)
-  OCR2A = 255;
+  SET_PWM(255);
   delay(100);
 
   // 2. Stop both PIDs
@@ -606,6 +617,11 @@ void minutesFunctions(unsigned long now) {
     humiditySetpoint = px[INCUBATE_HUMIDITY_SETp];
     setpoint = px[INCUBATE_TEMPp];
   }
+  DEBUG_PRINTLN(F("SPHUM="));
+  DEBUG_PRINTLN(humiditySetpoint);
+  DEBUG_PRINT(F("SPTEMP="));
+  DEBUG_PRINTLN(setpoint);
+
   if (humidity < humiditySetpoint) {
     humidifierRunningTimer = now;
     humidifierRunning = true;
@@ -667,7 +683,7 @@ void checkForMosfetFailure(void) {
 // confirm runaway condition
 void confirmMosfetShort(void) {
   int faultCount = 60;
-  OCR2A = 255; // stop the peltier drive
+  SET_PWM(255); // stop the peltier drive
   while (1) {
     if ((inHeatMode && (NTCtempHeatblock > heatblockLastTemp)) ||
         (!inHeatMode && (NTCtempHeatblock < heatblockLastTemp))) {
@@ -685,12 +701,34 @@ void confirmMosfetShort(void) {
     DEBUG_PRINT(F("MOSFET FAULT COUNT "));
     DEBUG_PRINTLN(faultCount);
     sampleSensors();
-    wdt_reset();                            // Good doggy
+    wdt_reset(); // Good doggy
     delay(1000);
   }
 }
 
 // safe unit if peltier is running away
 void scuttleShip(void) {
-  ; // do things
+  // chPID.SetMode(chPID.Control::manual);
+  // hbPID.SetMode(hbPID.Control::manual);
+  SET_PWM(255); // PWM off (useless if FET shorted, still do it)
+                // pwmDrive = 0;
+  // if (inHeatMode) {
+  digitalWrite(PELTIER_REV_PIN, LOW); // match whatever "cool" already is
+  // inHeatMode = false;
+  //}
+  // if already cool, do not touch the relay
+
+  SET_FAN(0);
+  // fanSpeed = 0;
+  // fanTarget = 0;
+
+  digitalWrite(HUMIDIFIER_PIN, LOW);
+  digitalWrite(AIRPUMP_PIN, LOW);
+  digitalWrite(ERROR_LED, HIGH);
+
+  for (;;) {
+    wdt_reset();
+    digitalWrite(ERROR_LED, !digitalRead(ERROR_LED));
+    delay(500);
+  }
 }
