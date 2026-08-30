@@ -90,8 +90,9 @@ bool runProgramCode = 0; // switch on the programming code
 bool runMenuCode = 0;    // switch on the menufunctions code
 bool StatusModeStarted = 0; // are we going to be in status code?
 int menuSelector = 3;       // selecting menu options
-bool humidifierRan = 0; // just for serial output as humidifer runs for a time
-                        // shorter than update.
+// bool humidifierRan = 0; // just for serial output as humidifer runs for a
+// time
+//  shorter than update.
 bool useOuterI =
     true; // are we inhibiting the PID I term to stop the endless windup problem
 // screen scrolling variables.
@@ -394,6 +395,15 @@ void loop() { //******************main loop************************
     DEBUG_PRINTLN(fanSpeed);
     DEBUG_PRINT(F("PIDOUT="));
     DEBUG_PRINTLN(PID1output);
+    DEBUG_PRINT(F("HTBLKT="));
+    DEBUG_PRINTLN(NTCtempHeatblock);
+    DEBUG_PRINT(F("HSINKT="));
+    DEBUG_PRINTLN(NTCtempHeatsink);
+    DEBUG_PRINT(F("AMBT="));
+    DEBUG_PRINTLN(ambientTemp);
+    DEBUG_PRINT(F("HTBLKINPUT="));
+    DEBUG_PRINTLN(heatBlockInput);
+
     // DEBUG_FLUSH(); // Keeps the CPU here until the talk is done
   }
   // sample sensors every 1000 millis
@@ -468,11 +478,13 @@ void loop() { //******************main loop************************
       (currentMillis - humidifierRunningTimer >=
        (px[WATER_SECONDSp] * 1000))) { // shutdown humidifier when time is up
     humidifierRunning = false;
+    DEBUG_PRINTLN(F("HUMIDIFIERON=0"));
   }
   if (airPumpRunning &&
       (currentMillis - airPumpRunningTimer >=
        (px[AIR_SECONDSp] * 1000))) { // shutdown the airpump when time is up
     airPumpRunning = false;
+    DEBUG_PRINTLN(F("AIRPUMPON=0"));
   }
 
   //  WRITE TO THE OUTPUTS NOw THAT WE'RE AT THE END
@@ -625,11 +637,13 @@ void minutesFunctions(unsigned long now) {
   if (humidity < humiditySetpoint) {
     humidifierRunningTimer = now;
     humidifierRunning = true;
-    humidifierRan = 1;
+    DEBUG_PRINTLN(F("HUMIDIFIERON=1"));
+    // humidifierRan = 1;
   }
   if (humidity > 98) {
     airPumpRunningTimer = now;
     airPumpRunning = true;
+    DEBUG_PRINTLN(F("AIRPUMPON=1"));
   }
   switch (stepIndex) {
   case 0:
@@ -650,6 +664,7 @@ void minutesFunctions(unsigned long now) {
 void hourFunctions(unsigned long now) {
   airPumpRunningTimer = now;
   airPumpRunning = true;
+  DEBUG_PRINTLN(F("AIRPUMPON=1"));
   setSyncProvider(getRtcTime); // get the time from the RTC
 }
 

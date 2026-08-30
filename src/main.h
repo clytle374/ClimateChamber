@@ -178,7 +178,7 @@ extern bool runProgramCode;
 extern bool runMenuCode;
 extern bool StatusModeStarted;
 extern int menuSelector;
-extern bool humidifierRan;
+//extern bool humidifierRan;
 extern bool useOuterI;
 
 // screen scrolling
