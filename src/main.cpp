@@ -13,6 +13,7 @@ LIST********************************* count I2C faults count sensor faults
 
 night day temp and humidity cycles.
 CATCH MOSFET RUNAWAY, safe system, pet watchdog.
+***above mostly done, need to add eeprom lockout
 
 make sure the relay defualts to cool mode in relaxed state
 
@@ -36,6 +37,8 @@ block cannot jump 20 °F in a 1 s sample. If PWM has been >30 % for half a minut
 and the block is not moving the expected direction, treat it as NTC-off or
 drive-dead. On any NTC fault: PWM off, do not throw the reverse relay, ERROR LED
 on. Leave pump and humidifier alone.
+
+
 
 
 */
@@ -205,9 +208,9 @@ QuickPID chPID(&temperature, &PID1output, &setpoint);          // outer loop
 QuickPID hbPID(&NTCtempHeatblock, &pwmDrive, &heatBlockInput); // inner loop
 
 void setup() {
-  MCUSR = 0;     // clearing watchdog
+  MCUSR = 0; // clearing watchdog
   wdt_disable(); // disable the watchdog
-  // *********************TESTING****************
+  //  *********************TESTING****************
   displayMode =
       RUN; // put display in run to start out      *************************
   pinMode(ROTARY_PIN1, INPUT_PULLUP); //************************added are they
@@ -239,7 +242,7 @@ void setup() {
   // Timer 2: Fast PWM, non-inverting
   TCCR2A = (1 << COM2A1) | (1 << WGM21) | (1 << WGM20);
   TCCR2B = (1 << CS20); // Prescaler 1 → ~78 kHz
-  OCR2A = 255;          // Start at 0%
+  OCR2A = 0;            // Start at 0%
 
   // === Fan PWMs ===
   pinMode(FAN_PWM, OUTPUT); // PD5 as output (OC1A)
@@ -294,8 +297,8 @@ void setup() {
     sensor[i].faultCounter = 0;
   }
 
-  // DEBUG_BEGIN(115200);  //set serial speed
-  DEBUG_BEGIN(px[SERIAL_BAUD]); // set serial speed
+  DEBUG_BEGIN(57600); // set serial speed
+  // DEBUG_BEGIN(px[SERIAL_BAUD]); // set serial speed
   DEBUG_PRINTLN("hello");
 
   // encoder switch events
@@ -360,7 +363,7 @@ void loop() { //******************main loop************************
   unsigned long currentMillis = millis(); // Get the current time
   eb1.update();                           // button update
   wdt_reset();                            // Good doggy
-  // Ask if outer PID loop is ready to execute
+  //  Ask if outer PID loop is ready to execute
   if (chPID.Compute()) { // if PID1 runs, its timebase is controlled internally.
                          // Lets use the output to make a useable input for PID2
     float deltaT =
@@ -382,9 +385,8 @@ void loop() { //******************main loop************************
     uint8_t dutyCycle =
         (uint8_t)(pwmDrive * 2.55 + 0.5); // +0.5 for better rounding
     PWM_DRIVE.addValue(pwmDrive);
-    // Inverted for your hardware (100% PWM = OCR2A = 0)
-    SET_PWM(dutyCycle); // OCR2A = 255 - dutyCycle;
-
+    dutyCycle = constrain(dutyCycle, 0, 245 );
+    SET_PWM(dutyCycle);
     DEBUG_PRINT(F("SYSHUM="));
     DEBUG_PRINTLN(humidity);
     DEBUG_PRINT(F("SYSTEMP="));
@@ -465,7 +467,7 @@ void loop() { //******************main loop************************
     // do some other things every 5 seconds CONTROL_RATE
     detectHCmode();
     updateUseOuterI();
-    // checkForMosfetFailure();
+    checkForMosfetFailure();
     //  setFanSpeed(40);
   }
   if (runMenuCode == true) { // code for changeing function withing the menu

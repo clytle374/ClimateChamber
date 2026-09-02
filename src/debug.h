@@ -1,5 +1,5 @@
 // =============== PELTIER HALT MODE ===============
-#define HALT_MODE 1  //  1 disables the peltier and fans for development.
+#define HALT_MODE 0  //  1 disables the peltier and fans for development.
 
 #if HALT_MODE
 #define SET_PWM(dutyCycle) (OCR2A = 0)  // Peltier forced OFF

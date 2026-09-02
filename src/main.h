@@ -97,7 +97,8 @@
 #define PELTIER_ON_PIN 15 // Peltier on 
 #define PELTIER_REV_PIN 14 // Peltier reverse polarity 
 #define AIRPUMP_PIN 27 // airpump 
-#define NTC_HEATSINK_PIN 25 // NTC
+//****************** SWAPPED DUE CTO BAD PIN*********************** */
+#define NTC_HEATSINK_PIN 25// NTC
 #define NTC_HEATBLOCK_PIN 24 // NTC 
 #define NTC_RESISTOR 10000
 #define NTC_RESISTANCE 10000
