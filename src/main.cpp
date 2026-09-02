@@ -297,8 +297,8 @@ void setup() {
     sensor[i].faultCounter = 0;
   }
 
-  DEBUG_BEGIN(57600); // set serial speed
-  // DEBUG_BEGIN(px[SERIAL_BAUD]); // set serial speed
+  //DEBUG_BEGIN(57600); // set serial speed
+  DEBUG_BEGIN(px[SERIAL_BAUD]); // set serial speed
   DEBUG_PRINTLN("hello");
 
   // encoder switch events
