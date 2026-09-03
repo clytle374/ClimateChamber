@@ -109,6 +109,10 @@ float pwmDrive;       // output from PID for main element
 float heatBlockInput; // output for the cool PID
 float PID1output; // we're going to save the output of PID1 here and use it for
                   // deltaT and serial debugging
+bool ntcBlockRawOk = true; // is the NTC acting right
+bool ntcSinkRawOk = true;  // is the NTC acting right
+bool systemIsHalted =
+    false; // if either NTC is acting up, shutdown peltier and run fan
 float heatblockDeltaT =
     0; // for tracking the delta T of the heatblock to catch mosfet shorted.
 unsigned long noSensorSince = 0; // timer to start if e have no sensor data
@@ -208,7 +212,7 @@ QuickPID chPID(&temperature, &PID1output, &setpoint);          // outer loop
 QuickPID hbPID(&NTCtempHeatblock, &pwmDrive, &heatBlockInput); // inner loop
 
 void setup() {
-  MCUSR = 0; // clearing watchdog
+  MCUSR = 0;     // clearing watchdog
   wdt_disable(); // disable the watchdog
   //  *********************TESTING****************
   displayMode =
@@ -297,7 +301,7 @@ void setup() {
     sensor[i].faultCounter = 0;
   }
 
-  //DEBUG_BEGIN(57600); // set serial speed
+  // DEBUG_BEGIN(57600); // set serial speed
   DEBUG_BEGIN(px[SERIAL_BAUD]); // set serial speed
   DEBUG_PRINTLN("hello");
 
@@ -363,50 +367,52 @@ void loop() { //******************main loop************************
   unsigned long currentMillis = millis(); // Get the current time
   eb1.update();                           // button update
   wdt_reset();                            // Good doggy
-  //  Ask if outer PID loop is ready to execute
-  if (chPID.Compute()) { // if PID1 runs, its timebase is controlled internally.
-                         // Lets use the output to make a useable input for PID2
-    float deltaT =
-        PID1output * 0.33f; // lets scale PID1's output to 0 to X degrees F over
-                            // the current chamber temp
-    float ambientOffset = (setpoint - ambientTemp) *
-                          0.1f; // feed forward the ambient vs setpoint in
-                                // increase control range on heatblock
-    heatBlockInput =
-        temperature + deltaT + ambientOffset; // Aim for delta from process
-  }
-  // Ask if inner PID loop is ready to execute
-  if (hbPID.Compute()) { // call PID2, if it returns that it ran, spit out
-    // debugging info
 
-    //*********************
+  if (!systemIsHalted) { // don't run PIDs, we have something not okay.
+    //  Ask if outer PID loop is ready to execute
+    if (chPID.Compute()) { // if PID1 runs, its timebase is controlled
+                           // internally. Lets use the output to make a useable
+                           // input for PID2
+      float deltaT =
+          PID1output * 0.33f; // lets scale PID1's output to 0 to X degrees F
+                              // over the current chamber temp
+      float ambientOffset = (setpoint - ambientTemp) *
+                            0.1f; // feed forward the ambient vs setpoint in
+                                  // increase control range on heatblock
+      heatBlockInput = constrain(temperature + deltaT + ambientOffset, -10, 140);// Aim for delta from process
+    }
+    // Ask if inner PID loop is ready to execute
+    if (hbPID.Compute()) { // call PID2, if it returns that it ran, spit out
+                           // debugging info
 
-    // Convert to 8-bit value (0-255)
-    uint8_t dutyCycle =
-        (uint8_t)(pwmDrive * 2.55 + 0.5); // +0.5 for better rounding
-    PWM_DRIVE.addValue(pwmDrive);
-    dutyCycle = constrain(dutyCycle, 0, 245 );
-    SET_PWM(dutyCycle);
-    DEBUG_PRINT(F("SYSHUM="));
-    DEBUG_PRINTLN(humidity);
-    DEBUG_PRINT(F("SYSTEMP="));
-    DEBUG_PRINTLN(temperature);
-    DEBUG_PRINT(F("PWM="));
-    DEBUG_PRINTLN(pwmDrive);
-    DEBUG_PRINT(F("FAN="));
-    DEBUG_PRINTLN(fanSpeed);
-    DEBUG_PRINT(F("PIDOUT="));
-    DEBUG_PRINTLN(PID1output);
-    DEBUG_PRINT(F("HTBLKT="));
-    DEBUG_PRINTLN(NTCtempHeatblock);
-    DEBUG_PRINT(F("HSINKT="));
-    DEBUG_PRINTLN(NTCtempHeatsink);
-    DEBUG_PRINT(F("AMBT="));
-    DEBUG_PRINTLN(ambientTemp);
-    DEBUG_PRINT(F("HTBLKINPUT="));
-    DEBUG_PRINTLN(heatBlockInput);
+      //*********************
+      // Convert to 8-bit value (0-255)
+      uint8_t dutyCycle =
+          (uint8_t)(pwmDrive * 2.55 + 0.5); // +0.5 for better rounding
+      PWM_DRIVE.addValue(pwmDrive);
+      dutyCycle = constrain(dutyCycle, 0, 245);
+      SET_PWM(dutyCycle);
+      DEBUG_PRINT(F("SYSHUM="));
+      DEBUG_PRINTLN(humidity);
+      DEBUG_PRINT(F("SYSTEMP="));
+      DEBUG_PRINTLN(temperature);
+      DEBUG_PRINT(F("PWM="));
+      DEBUG_PRINTLN(pwmDrive);
+      DEBUG_PRINT(F("FAN="));
+      DEBUG_PRINTLN(fanSpeed);
+      DEBUG_PRINT(F("PIDOUT="));
+      DEBUG_PRINTLN(PID1output);
+      DEBUG_PRINT(F("HTBLKT="));
+      DEBUG_PRINTLN(NTCtempHeatblock);
+      DEBUG_PRINT(F("HSINKT="));
+      DEBUG_PRINTLN(NTCtempHeatsink);
+      DEBUG_PRINT(F("AMBT="));
+      DEBUG_PRINTLN(ambientTemp);
+      DEBUG_PRINT(F("HTBLKINPUT="));
+      DEBUG_PRINTLN(heatBlockInput);
 
-    // DEBUG_FLUSH(); // Keeps the CPU here until the talk is done
+      // DEBUG_FLUSH(); // Keeps the CPU here until the talk is done
+    }
   }
   // sample sensors every 1000 millis
   if (currentMillis - sensorTimer >= SENSOR_RATE) {
@@ -535,7 +541,7 @@ void updateUseOuterI() {
   }
 
   // Turn I OFF only when error gets clearly larger
-  if (useOuterI && error > px[DEAD_ZONEp] * 2) {
+  if (useOuterI && error > px[DEAD_ZONEp] * 4) {
     useOuterI = false;
     DEBUG_PRINTLN(F("OUTERION=0"));
   }
@@ -555,13 +561,13 @@ void loadPIDs(void) {
 
   if (inHeatMode) {
     kp = useOuterI ? px[PID_KP_HEATp]
-                   : px[PID_KP_HEATp] * 1.0f; // was 1.5, testing no boost
+                   : px[PID_KP_HEATp] * 1.3f; // was 1.5, 
     ki = useOuterI ? px[PID_KI_HEATp] : 0.0f;
     kd = px[PID_KD_HEATp];
     blockP = px[PID_P_BLOCK_HEATp];
   } else {
     kp = useOuterI ? px[PID_KP_COOLp]
-                   : px[PID_KP_COOLp] * 1.0f; // was 1.5, testing no boost
+                   : px[PID_KP_COOLp] * 1.3f; // was 1.5,  
     ki = useOuterI ? px[PID_KI_COOLp] : 0.0f;
     kd = px[PID_KD_COOLp];
     blockP = px[PID_P_BLOCK_COOLp];
@@ -616,9 +622,11 @@ void setFanSpeed() {
     if (fanSpeed < target)
       fanSpeed = target;
   }
-
-  SET_FAN(fanSpeed);
-  // OCR1A = (uint8_t)(fanSpeed * 2.55f + 0.5f);
+  if (systemIsHalted) {
+    SET_FAN(100);
+  } else {
+    SET_FAN(fanSpeed);
+  }
 }
 
 // function to handle things every minute, or 5 minutes.
@@ -688,6 +696,9 @@ void lightControl(bool state) {
 
 // test if system seems mormal
 void checkForMosfetFailure(void) {
+  if (systemIsHalted) {
+    return;
+  }
   float heatblockDeltaT = heatblockLastTemp - NTCtempHeatblock;
   if (PWM_DRIVE.getAverage() < 5) {
     if (fabs(heatblockDeltaT) > 1) {
@@ -700,7 +711,7 @@ void checkForMosfetFailure(void) {
 // confirm runaway condition
 void confirmMosfetShort(void) {
   int faultCount = 60;
-  SET_PWM(255); // stop the peltier drive
+  SET_PWM(0); // stop the peltier drive
   while (1) {
     if ((inHeatMode && (NTCtempHeatblock > heatblockLastTemp)) ||
         (!inHeatMode && (NTCtempHeatblock < heatblockLastTemp))) {
@@ -727,8 +738,8 @@ void confirmMosfetShort(void) {
 void scuttleShip(void) {
   // chPID.SetMode(chPID.Control::manual);
   // hbPID.SetMode(hbPID.Control::manual);
-  SET_PWM(255); // PWM off (useless if FET shorted, still do it)
-                // pwmDrive = 0;
+  SET_PWM(0); // PWM off (useless if FET shorted, still do it)
+              // pwmDrive = 0;
   // if (inHeatMode) {
   digitalWrite(PELTIER_REV_PIN, LOW); // match whatever "cool" already is
   // inHeatMode = false;

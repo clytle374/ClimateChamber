@@ -93,7 +93,7 @@
 #define LIGHT_PIN2 19  //dac light pins 
 #define LIGHT_PIN3 20  //dac light pins 
 #define LIGHT_PIN4 21  //dac light pins
-#define HUMIDIFIER_PIN 26 // ultrasonic humidifier
+#define HUMIDIFIER_PIN 28 // ultrasonic humidifier
 #define PELTIER_ON_PIN 15 // Peltier on 
 #define PELTIER_REV_PIN 14 // Peltier reverse polarity 
 #define AIRPUMP_PIN 27 // airpump 
@@ -197,6 +197,9 @@ extern bool noSensorFault;
 extern uint16_t numberOfWireFaults;
 
 extern float heatblockLastTemp;
+extern bool ntcBlockRawOk;
+extern bool ntcSinkRawOk;
+extern bool systemIsHalted;
 
 extern RunningAverage AMBIENT_TEMP;
 extern RunningAverage HEATBLOCK_TEMP;

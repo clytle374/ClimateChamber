@@ -2,7 +2,7 @@
 #include "debug.h"
 #include "main.h"
 void SixHourFunctions() {
-  uint8_t idx = hour() / 6;   // At hour 0,6,12,18 regen 0,1,2,3 respectivly 
+  uint8_t idx = hour() / 6; // At hour 0,6,12,18 regen 0,1,2,3 respectivly
   if (idx < 4) {
     regenSensorStart(idx);
   }
@@ -357,10 +357,21 @@ void sampleSensors(void) {
   Wire.endTransmission();
   */
   // === NTC Sensors ===
-  HEATBLOCK_TEMP.addValue(NTCread(NTC_HEATBLOCK_PIN));
-  HEATSINK_TEMP.addValue(NTCread(NTC_HEATSINK_PIN));
+  double tBlk = NTCread(NTC_HEATBLOCK_PIN);
+  if (ntcBlockRawOk)
+    HEATBLOCK_TEMP.addValue(tBlk);
 
-  heatblockLastTemp = NTCtempHeatblock;   //keep value for mosfet fail detect 
+  double tSnk = NTCread(NTC_HEATSINK_PIN);
+  if (ntcSinkRawOk) {
+    HEATSINK_TEMP.addValue(tSnk);
+  }
+  if (!ntcBlockRawOk || !ntcSinkRawOk) {
+    SET_PWM(0);
+    SET_FAN(100);
+    systemIsHalted = true;
+  }
+
+  heatblockLastTemp = NTCtempHeatblock; // keep value for mosfet fail detect
   ambientTemp = AMBIENT_TEMP.getAverage();
   NTCtempHeatblock = HEATBLOCK_TEMP.getAverage();
   NTCtempHeatsink = HEATSINK_TEMP.getAverage();
@@ -399,6 +410,17 @@ void sampleSensors(void) {
 // read the NTCs
 double NTCread(uint8_t pin) {
   double ADCvalue = analogRead(pin);
+  bool ok = (ADCvalue > 20.0) && (ADCvalue < 1000.0);
+
+  if (pin == NTC_HEATBLOCK_PIN) {
+    ntcBlockRawOk = ok;
+  } else if (pin == NTC_HEATSINK_PIN) {
+    ntcSinkRawOk = ok;
+  }
+
+  if (!ok)
+    return 0;
+
   double resistance = (1023.0 / ADCvalue) - 1.0;
   resistance = NTC_RESISTOR / resistance;
   double temp = resistance / NTC_RESISTANCE;
@@ -407,5 +429,4 @@ double NTCread(uint8_t pin) {
   temp += 1.0 / (NTC_REF + 273.15);
   temp = 1.0 / temp;
   return (temp - 273.15) * 1.8 + 32.0;
-  //*pTemp -= 1.5f;
 }
