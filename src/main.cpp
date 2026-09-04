@@ -18,25 +18,7 @@ CATCH MOSFET RUNAWAY, safe system, pet watchdog.
 make sure the relay defualts to cool mode in relaxed state
 
 What an NTC failure actually looks like on your divider (10k pull-up, NTC to
-GND):
-
-Open / fallen lug — ADC ≈ 1023, computed temp goes absurdly cold. Inner loop
-thinks the block is ice and slams PWM to 100. Fuse is what saves the stack.
-Short — ADC ≈ 0, 1023/ADC blows up, PID gets garbage, same slam.
-NTC off the metal, hanging in air — plausible mid-range numbers, just sluggish.
-Inner loop overdrives the 6061 until the block fuse opens. This one looks
-“healthy” if you only check for NaN. Blower dead, sink NTC still attached —
-block climbs, sink does not. Sink fuse may never blow; block fuse should.
-
-Rules I would put in before the inner PID, kept dumb:
-
-Raw ADC must be ~40–1000 or the sample is discarded.
-Computed temp must stay inside something like 14–176 °F. Software trip well
-below the fuse — say PWM off at 120 °F / 49 °C on either NTC. Slew cap: that
-block cannot jump 20 °F in a 1 s sample. If PWM has been >30 % for half a minute
-and the block is not moving the expected direction, treat it as NTC-off or
-drive-dead. On any NTC fault: PWM off, do not throw the reverse relay, ERROR LED
-on. Leave pump and humidifier alone.
+GND):  DONE: BUT TEST THIS
 
 
 
@@ -96,8 +78,8 @@ int menuSelector = 3;       // selecting menu options
 // bool humidifierRan = 0; // just for serial output as humidifer runs for a
 // time
 //  shorter than update.
-bool useOuterI =
-    true; // are we inhibiting the PID I term to stop the endless windup problem
+bool useOuterI = false; // are we inhibiting the PID I term to stop the endless
+                        // windup problem
 // screen scrolling variables.
 int screenX = 0; // locations for display scanning to not burn screen
 int screenY = 0; // locations for display scanning to not burn screen
@@ -379,7 +361,8 @@ void loop() { //******************main loop************************
       float ambientOffset = (setpoint - ambientTemp) *
                             0.1f; // feed forward the ambient vs setpoint in
                                   // increase control range on heatblock
-      heatBlockInput = constrain(temperature + deltaT + ambientOffset, -10, 140);// Aim for delta from process
+      heatBlockInput = constrain(temperature + deltaT + ambientOffset, -10,
+                                 140); // Aim for delta from process
     }
     // Ask if inner PID loop is ready to execute
     if (hbPID.Compute()) { // call PID2, if it returns that it ran, spit out
@@ -510,7 +493,6 @@ void detectHCmode() {
   if (PID1output > 0) {
     // Temperature is too low, definitively needs heat
     if (inHeatMode == false) { // Only print/switch if changing state
-      DEBUG_PRINTLN(F("Force to Heat Mode"));
       inHeatMode = true;
       DEBUG_PRINT(F("HEATMODE=1"));
       swapPIDmode();
@@ -519,27 +501,37 @@ void detectHCmode() {
   if (PID1output < 0) {
     // Temperature is too high, definitively needs cooling
     if (inHeatMode == true) { // Only print/switch if changing state
-      DEBUG_PRINTLN(F("Force to Cool Mode"));
       inHeatMode = false;
       DEBUG_PRINT(F("HEATMODE=0"));
       swapPIDmode();
     }
   }
+  digitalWrite(HEAT_LED, inHeatMode);
 }
 
 // detect if we are withing half of deadzone from target to change loop
 // agressiveness
 void updateUseOuterI() {
   static bool lastUseOuterI = false;
-
+  static bool hasRan = false;
   float error = abs(setpoint - temperature);
+  if (!hasRan) {
+    if (error < px[DEAD_ZONEp] * 2) {
+      useOuterI = true;
+      DEBUG_PRINTLN(F("OUTERION=1"));
+    } else {
+      useOuterI = false;
+      DEBUG_PRINTLN(F("OUTERION=0"));
+    }
+  } else {
+    hasRan = true;
+  }
 
   // Turn I ON when error gets small enough (with some hysteresis)
   if (!useOuterI && error < px[DEAD_ZONEp] * 2) {
     useOuterI = true;
     DEBUG_PRINTLN(F("OUTERION=1"));
   }
-
   // Turn I OFF only when error gets clearly larger
   if (useOuterI && error > px[DEAD_ZONEp] * 4) {
     useOuterI = false;
@@ -548,9 +540,7 @@ void updateUseOuterI() {
 
   // Only update PID gains if the state actually changed
   if (useOuterI != lastUseOuterI) {
-
     loadPIDs();
-
     lastUseOuterI = useOuterI;
   }
 }
@@ -560,14 +550,12 @@ void loadPIDs(void) {
   float kp, ki, kd, blockP;
 
   if (inHeatMode) {
-    kp = useOuterI ? px[PID_KP_HEATp]
-                   : px[PID_KP_HEATp] * 1.3f; // was 1.5, 
+    kp = useOuterI ? px[PID_KP_HEATp] : px[PID_KP_HEATp] * 1.5f; // was 1.5,
     ki = useOuterI ? px[PID_KI_HEATp] : 0.0f;
     kd = px[PID_KD_HEATp];
     blockP = px[PID_P_BLOCK_HEATp];
   } else {
-    kp = useOuterI ? px[PID_KP_COOLp]
-                   : px[PID_KP_COOLp] * 1.3f; // was 1.5,  
+    kp = useOuterI ? px[PID_KP_COOLp] : px[PID_KP_COOLp] * 1.5f; // was 1.5,
     ki = useOuterI ? px[PID_KI_COOLp] : 0.0f;
     kd = px[PID_KD_COOLp];
     blockP = px[PID_P_BLOCK_COOLp];
@@ -609,10 +597,17 @@ void swapPIDmode(void) {
 }
 // set the heatsink fan speed.
 void setFanSpeed() {
-  uint8_t target = constrain(pwmDrive, 35, 100);
 
   const uint8_t rampRate = 1; // Same rate up and down
+  if (systemIsHalted || NTCtempHeatsink >= 120.0f || NTCtempHeatsink <= 32.0f) {
+    SET_FAN(100);
+    return;
+  }
 
+  float dT = fabs(NTCtempHeatsink - ambientTemp);
+  uint8_t target =
+      35 + (uint8_t)constrain(dT * (65.0f / 30.0f), 0, 65); // grok did this
+  // 0 °F → 35 %, 30 °F → 100 %
   if (target > fanSpeed) {
     fanSpeed += rampRate * 3;
     if (fanSpeed > target)
@@ -622,11 +617,7 @@ void setFanSpeed() {
     if (fanSpeed < target)
       fanSpeed = target;
   }
-  if (systemIsHalted) {
-    SET_FAN(100);
-  } else {
-    SET_FAN(fanSpeed);
-  }
+  SET_FAN(fanSpeed);
 }
 
 // function to handle things every minute, or 5 minutes.
@@ -639,7 +630,7 @@ void minutesFunctions(unsigned long now) {
     humiditySetpoint = px[INCUBATE_HUMIDITY_SETp];
     setpoint = px[INCUBATE_TEMPp];
   }
-  DEBUG_PRINTLN(F("SPHUM="));
+  DEBUG_PRINT(F("SPHUM="));
   DEBUG_PRINTLN(humiditySetpoint);
   DEBUG_PRINT(F("SPTEMP="));
   DEBUG_PRINTLN(setpoint);

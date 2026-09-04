@@ -54,7 +54,7 @@
 #define PID_KI_HEATp 10           //^^ parameter number
 #define PID_KD_HEAT 0.011
 #define PID_KD_HEATp 11           //^^ parameter number
-#define PID_P_BLOCK_HEAT  12
+#define PID_P_BLOCK_HEAT  15
 #define PID_P_BLOCK_HEATp 12       //^^ parameter number
 #define PID_KP_COOL 26
 #define PID_KP_COOLp 13           //^^ parameter number
