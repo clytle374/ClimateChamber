@@ -21,7 +21,7 @@ What an NTC failure actually looks like on your divider (10k pull-up, NTC to
 GND):  DONE: BUT TEST THIS
 
 
-
+Catch humidity readings way over setpoint and regen sensors. 
 
 */
 
@@ -341,6 +341,9 @@ void setup() {
   DEBUG_PRINTLN(setpoint);
   DEBUG_PRINT(F("HEATMODE="));
   DEBUG_PRINTLN(inHeatMode);
+  DEBUG_PRINTLN(F("S0VALID=1, S1VALID=1, S2VALID=1, S3VALID=1"));
+  DEBUG_PRINTLN(F("S0REGEN=0, S1REGEN=0, S2REGEN=0, S3REGEN=0"));
+  DEBUG_PRINTLN(F("S0FAILED=0, S1FAILED=0, S2FAILED=0, S3FAILED=0"));
 
   wdt_enable(WDTO_4S); // arm the watchdog
 }

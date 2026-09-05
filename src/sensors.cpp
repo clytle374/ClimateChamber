@@ -16,23 +16,29 @@ void sensorMaint() {
       if (regenSensorEnd(i) == 1) {
         sensor[i].regenState = READY;
         sensor[i].isValid = true;
-        DEBUG_PRINT(F("Regen and test sensor ")); // let the world know
-        DEBUG_PRINT(i);                           // that sensoo is back online
-        DEBUG_PRINTLN(F(" okay"));
+        DEBUG_PRINT(F("S"));
+        DEBUG_PRINT(i);
+        DEBUG_PRINT(F("VALID=1, "));
+        DEBUG_PRINT(F("S"));
+        DEBUG_PRINT(i);
+        DEBUG_PRINT(F("REGEN=0, "));
+        DEBUG_PRINT(F("S"));
+        DEBUG_PRINT(i);
+        DEBUG_PRINTLN(F("FAILED=0"));
       } else {
         sensor[i].regenState = FAILED;
         sensor[i].isValid = false;
-        DEBUG_PRINT(F("Sensor "));
+        DEBUG_PRINT(F("S"));
         DEBUG_PRINT(i);
-        DEBUG_PRINTLN(F(" testing failed"));
+        DEBUG_PRINTLN(F("FAILED=0"));
         return;
       }
     }
   }
   if (sensor[rehabIndex].regenState == FAILED) { // check for failed sensor
-    DEBUG_PRINT(F("Sensor "));
+    DEBUG_PRINT(F("S"));
     DEBUG_PRINT(rehabIndex);
-    DEBUG_PRINTLN(F(" in regen mode"));
+    DEBUG_PRINTLN(F("REGEN=1"));
     sensor[rehabIndex].regenState = REGEN;
     sensor[rehabIndex].isValid = false;
     regenSensorStart(rehabIndex);
@@ -88,22 +94,13 @@ void sensorTempTest() {
 
   if (maxDev > TEMP_FAULT_THRESHOLD) {
     // sensor[maxDevSensor] is the outlier
-    DEBUG_PRINT(F("Sensor "));
+    DEBUG_PRINT(F("S"));
     DEBUG_PRINT(maxDevSensor);
-    DEBUG_PRINTLN(F(" failed temp"));
+    DEBUG_PRINTLN(F("VALID=0"));
     sensor[maxDevSensor].isValid = false;
     sensor[maxDevSensor].regenState = FAILED;
     sensor[maxDevSensor].faultCounter++;
   }
-  DEBUG_PRINT(sDeviation[0]);
-  DEBUG_PRINT("  ");
-  DEBUG_PRINT(sDeviation[1]);
-  DEBUG_PRINT("  ");
-  DEBUG_PRINT(sDeviation[2]);
-  DEBUG_PRINT("  ");
-  DEBUG_PRINT(sDeviation[3]);
-  DEBUG_PRINT(" F ");
-  DEBUG_PRINTLN(maxDevSensor);
 }
 
 // Check sensor for bad humidity readings.
@@ -151,22 +148,13 @@ void sensorHumidityTest() {
 
   if (maxDev > HUMIDITY_FAULT_THRESHOLD) {
     // sensor[maxDevSensor] is the outlier
-    DEBUG_PRINT(F("Sensor "));
+    DEBUG_PRINT(F("S"));
     DEBUG_PRINT(maxDevSensor);
-    DEBUG_PRINTLN(F(" failed humidity"));
+    DEBUG_PRINTLN(F("VALID=0"));
     sensor[maxDevSensor].isValid = false;
     sensor[maxDevSensor].regenState = FAILED;
     sensor[maxDevSensor].faultCounter++;
   }
-  DEBUG_PRINT(sDeviation[0]);
-  DEBUG_PRINT("  ");
-  DEBUG_PRINT(sDeviation[1]);
-  DEBUG_PRINT("  ");
-  DEBUG_PRINT(sDeviation[2]);
-  DEBUG_PRINT("  ");
-  DEBUG_PRINT(sDeviation[3]);
-  DEBUG_PRINT(" %RH ");
-  DEBUG_PRINTLN(maxDevSensor);
 }
 
 // Regenerate a T&H sensor
@@ -300,6 +288,20 @@ void readSHT41(uint8_t idx, bool force) {
       CHAMBER_HUM[idx].addValue(humid);
       sensor[idx].temperature = CHAMBER_TEMP[idx].getAverage();
       sensor[idx].humidity = CHAMBER_HUM[idx].getAverage();
+      static uint8_t outputCounter = 0;
+      if (outputCounter > 9) {
+        DEBUG_PRINT("S");
+        DEBUG_PRINT(idx);
+        DEBUG_PRINT("T=");
+        DEBUG_PRINT(tempF);
+        DEBUG_PRINT(", S");
+        DEBUG_PRINT(idx);
+        DEBUG_PRINT("H=");
+        DEBUG_PRINTLN(humid);
+        outputCounter = 0;
+      } else {
+        outputCounter++;
+      }
     }
   }
 }
@@ -366,20 +368,20 @@ void sampleSensors(void) {
   if (ntcSinkRawOk) {
     HEATSINK_TEMP.addValue(tSnk);
   }
-  if (!ntcBlockRawOk || !ntcSinkRawOk) {      //is either NTC reading bad?
+  if (!ntcBlockRawOk || !ntcSinkRawOk) { // is either NTC reading bad?
     SET_PWM(0);
     SET_FAN(100);
     systemIsHalted = true;
     ntcGoodCount = 0;
     DEBUG_PRINTLN(F("SYSHALT=1"));
-  } else if (systemIsHalted) {              //lets count how many good reads since failure
+  } else if (systemIsHalted) { // lets count how many good reads since failure
     if (ntcGoodCount < 5)
       ntcGoodCount++;
-    if (ntcGoodCount >= 5 ) {               //5 good reads, restarat system
+    if (ntcGoodCount >= 5) { // 5 good reads, restarat system
       systemIsHalted = false;
       chPID.Reset();
       hbPID.Reset();
-        DEBUG_PRINTLN(F("SYSHALT=0"));
+      DEBUG_PRINTLN(F("SYSHALT=0"));
     }
   }
 
