@@ -599,15 +599,18 @@ void swapPIDmode(void) {
 void setFanSpeed() {
 
   const uint8_t rampRate = 1; // Same rate up and down
-  if (systemIsHalted || NTCtempHeatsink >= 120.0f || NTCtempHeatsink <= 32.0f) {
-    SET_FAN(100);
-    return;
+  uint8_t target;
+
+  // find target fan speed. 100% for too hot/cold, halt, or useOuterI = false
+  if (systemIsHalted || NTCtempHeatsink >= 120.0f || NTCtempHeatsink <= 32.0f ||
+      !useOuterI) {
+    target = 100;
+  } else {
+    float dT = fabs(NTCtempHeatsink - ambientTemp);
+    target = 35 + (uint8_t)constrain(dT * (65.0f / 30.0f), 0, 65);
   }
 
-  float dT = fabs(NTCtempHeatsink - ambientTemp);
-  uint8_t target =
-      35 + (uint8_t)constrain(dT * (65.0f / 30.0f), 0, 65); // grok did this
-  // 0 °F → 35 %, 30 °F → 100 %
+  // ramp fanSpeed toward target
   if (target > fanSpeed) {
     fanSpeed += rampRate * 3;
     if (fanSpeed > target)

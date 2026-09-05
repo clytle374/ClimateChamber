@@ -357,6 +357,7 @@ void sampleSensors(void) {
   Wire.endTransmission();
   */
   // === NTC Sensors ===
+  static uint8_t ntcGoodCount = 0;
   double tBlk = NTCread(NTC_HEATBLOCK_PIN);
   if (ntcBlockRawOk)
     HEATBLOCK_TEMP.addValue(tBlk);
@@ -365,10 +366,21 @@ void sampleSensors(void) {
   if (ntcSinkRawOk) {
     HEATSINK_TEMP.addValue(tSnk);
   }
-  if (!ntcBlockRawOk || !ntcSinkRawOk) {
+  if (!ntcBlockRawOk || !ntcSinkRawOk) {      //is either NTC reading bad?
     SET_PWM(0);
     SET_FAN(100);
     systemIsHalted = true;
+    ntcGoodCount = 0;
+    DEBUG_PRINTLN(F("SYSHALT=1"));
+  } else if (systemIsHalted) {              //lets count how many good reads since failure
+    if (ntcGoodCount < 5)
+      ntcGoodCount++;
+    if (ntcGoodCount >= 5 ) {               //5 good reads, restarat system
+      systemIsHalted = false;
+      chPID.Reset();
+      hbPID.Reset();
+        DEBUG_PRINTLN(F("SYSHALT=0"));
+    }
   }
 
   heatblockLastTemp = NTCtempHeatblock; // keep value for mosfet fail detect
