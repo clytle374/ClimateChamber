@@ -21,14 +21,20 @@ What an NTC failure actually looks like on your divider (10k pull-up, NTC to
 GND):  DONE: BUT TEST THIS
 
 
-Catch humidity readings way over setpoint and regen sensors. 
+Catch humidity readings way over setpoint and regen sensors.
 
-shut off airpump, humidifier, and even LEDs? while in mosfer failure modes. 
+shut off airpump, humidifier, and even LEDs? while in mosfer failure modes.
+
+Shut off interupts when writing to the eeprom
 
 Switching from encoder button library
 RAM:   [=====     ]  48.4% (used 1981 bytes from 4096 bytes)
 Flash: [======    ]  55.1% (used 36118 bytes from 65536 bytes)
-stack 1789 
+stack 1789
+After
+RAM:   [=====     ]  46.1% (used 1889 bytes from 4096 bytes)
+Flash: [=====     ]  51.6% (used 33804 bytes from 65536 bytes)
+stack 1927
 
 */
 
@@ -38,25 +44,25 @@ stack 1789
 #include "sensors.h"
 #include "utils.h"
 
-float temperature;       // I2C temp calculated
-float humidity;          // I2C huidity calculated
-float NTCtempHeatblock;  // where we put NTC reading
-float NTCtempHeatsink;   // where we put NTC reading
-float humiditySetpoint;  // target temp, moved here due to status display
-float ambientTemp = 100; // MB ambient temp  I hope they are close
-float heatblockLastTemp; // for mosfet short detection
-double px[41];           // parameters
-int encoder;             // stored encoder couunts
-bool button = 0;         // is button pressed?
-int currentParam = 0;    // what is the current position of the programming menu
-int lastPointer;         // save state to catch change
-int menuPointer = 10;    // move selector to parameters.  10 is for changing
-                         // selected parameter currentParam 0-9 pick a digit
-bool edit = 1;           // sw back to edit mode
-int menuYes = 0; // IDK, look into this  I thinkg this triggers the YES NO
-                 // display in program memory
-int currentBaudPointer =
-    0; // pointer for selecting baudrates from list, should be local?
+float temperature;            // I2C temp calculated
+float humidity;               // I2C huidity calculated
+float NTCtempHeatblock;       // where we put NTC reading
+float NTCtempHeatsink;        // where we put NTC reading
+float humiditySetpoint;       // target temp, moved here due to status display
+float ambientTemp = 100;      // MB ambient temp  I hope they are close
+float heatblockLastTemp;      // for mosfet short detection
+double px[41];                // parameters
+int encoder;                  // stored encoder couunts
+bool button = 0;              // is button pressed?
+volatile int8_t encDelta = 0; // for ncoder button ISR
+int currentParam = 0; // what is the current position of the programming menu
+int lastPointer;      // save state to catch change
+int menuPointer = 10; // move selector to parameters.  10 is for changing
+                      // selected parameter currentParam 0-9 pick a digit
+bool edit = 1;        // sw back to edit mode
+int menuYes = 0;      // IDK, look into this  I thinkg this triggers the YES NO
+                      // display in program memory
+int currentBaudPointer = 0; // pointer for selecting baudrates from list, should be local?
 // control timer variables
 unsigned long controlTimer;             // control internal time
 unsigned long sensorTimer;              // time for reads
@@ -82,8 +88,6 @@ bool runProgramCode = 0; // switch on the programming code
 bool runMenuCode = 0;    // switch on the menufunctions code
 bool StatusModeStarted = 0; // are we going to be in status code?
 int menuSelector = 3;       // selecting menu options
-// bool humidifierRan = 0; // just for serial output as humidifer runs for a
-// time
 //  shorter than update.
 bool useOuterI = false; // are we inhibiting the PID I term to stop the endless
                         // windup problem
@@ -93,7 +97,6 @@ int screenY = 0; // locations for display scanning to not burn screen
 int xShift;      // used to return a variable from a right justify function
 // ***** PID CONTROL VARIABLES *****
 float setpoint; // target temp
-// double input = 21;    //zero will throw errors before first averaged sample
 float pwmDrive;       // output from PID for main element
 float heatBlockInput; // output for the cool PID
 float PID1output; // we're going to save the output of PID1 here and use it for
@@ -177,41 +180,19 @@ const float baudRates[14] = {2400,   4800,   9600,   14400,  19200,
                              28800,  38400,  57600,  74800,  115200,
                              230400, 250000, 500000, 1000000};
 
-//***********************stopped switching move to header file here */
-// Create the u8x8 display                //
-// U8X8_SH1106_128X64_WINSTAR_4W_HW_SPI u8x8(/* cs=*/OLED_CS, /* dc=*/OLED_DC,
-// /* reset=*/OLED_RESET);  // same as the NONAME variant, but uses updated
-// SH1106 init sequence
 
-// *****************one of these shoulf work for new display
-// *************************
-// U8X8_SSD1327_EA_W128128_4W_HW_SPI u8x8(/* cs=*/OLED_CS, /* dc=*/OLED_DC, /*
-// reset=*/OLED_RESET);   //try this U8X8_SSD1327_WS_128X128_4W_HW_SPI u8x8(/*
-// cs=*/OLED_CS, /* dc=*/OLED_DC, /* reset=*/OLED_RESET);   /or this if text is
-// shifted u8x8.setContrast(value);   //screen dimming, it doesn't belong here,
-// it accepts 0-255
-// u8x8.sendF("ca", 0x81, 0x00);  //deeper dimming last input accepts 0x00 to
-// 0x0F
 
-EncoderButton eb1(ROTARY_PIN1, ROTARY_PIN2,
-                  BUTTON_PIN); // sets up the encoder buton
-// setup the 2 PID functions, in cascade
-// Heat/cool and paramters are switched when switching HEAT/COOL function
-QuickPID chPID(&temperature, &PID1output, &setpoint);          // outer loop
-QuickPID hbPID(&NTCtempHeatblock, &pwmDrive, &heatBlockInput); // inner loop
+QuickPID chPID(&temperature, &PID1output,
+               &setpoint); // outer loop
+QuickPID hbPID(&NTCtempHeatblock, &pwmDrive,
+               &heatBlockInput); // inner loop
 
 void setup() {
   MCUSR = 0;     // clearing watchdog
   wdt_disable(); // disable the watchdog
   //  *********************TESTING****************
-  displayMode =
-      RUN; // put display in run to start out      *************************
-  pinMode(ROTARY_PIN1, INPUT_PULLUP); //************************added are they
-                                      // needed?*******************
-  pinMode(ROTARY_PIN2, INPUT_PULLUP); //************************added are they
-                                      // needed?*******************
-  pinMode(BUTTON_PIN, INPUT_PULLUP);  //************************added are they
-                                      // needed?*******************
+  displayMode = RUN;                 // put display in run to start out
+  pinMode(BUTTON_PIN, INPUT_PULLUP); // needed
   pinMode(LIGHT_PIN1, OUTPUT);
   pinMode(LIGHT_PIN2, OUTPUT);
   pinMode(LIGHT_PIN3, OUTPUT);
@@ -238,16 +219,20 @@ void setup() {
   OCR2A = 0;            // Start at 0%
 
   // === Fan PWMs ===
-  pinMode(FAN_PWM, OUTPUT); // PD5 as output (OC1A)
-                            // Timer 1: 8-bit Fast PWM, non-inverting on OC1A
+  pinMode(FAN_PWM, OUTPUT);              // PD5 as output (OC1A)
+                                         // Timer 1: 8-bit Fast PWM,
+                                         // non-inverting on OC1A
   TCCR1A = (1 << COM1A1) | (1 << WGM10); // WGM11=0, WGM10=1  → 8-bit mode
   TCCR1B = (1 << WGM12) | (1 << CS11);   // WGM12=1, prescaler 8
 
   OCR1A = 255; // Start at 100%
 
+  encoderSetup();
+
   for (int i = 0; i < EXIT; i++) { // this loop loads eeprom into parameters
-    // EEPROM.put(EEPROM_STORAGE_ADDRESS + (i*4) , px[i]);   //this loads eeprom
-    // from parameters use this for new baord  ******doesn't work******
+    // EEPROM.put(EEPROM_STORAGE_ADDRESS + (i*4) , px[i]);
+    // //this loads eeprom from parameters use this for new
+    // baord  ******doesn't work******
     EEPROM.get(EEPROM_STORAGE_ADDRESS + (i * 4),
                px[i]); // this loads parameters from eeprom
   }
@@ -295,8 +280,8 @@ void setup() {
   DEBUG_PRINTLN("hello");
 
   // encoder switch events
-  eb1.setClickHandler(onEb1Clicked);
-  eb1.setEncoderHandler(onEb1Encoder);
+  // eb1.setClickHandler(onEb1Clicked);
+  // eb1.setEncoderHandler(onEb1Encoder);
   Wire.begin();
   Wire.setWireTimeout(25000,
                       true); // 25 ms timeout, reset TWI hardware on timeout
@@ -330,8 +315,8 @@ void setup() {
   chPID.SetAntiWindupMode(chPID.iAwMode::iAwClamp); // anti-windup control
   hbPID.SetAntiWindupMode(hbPID.iAwMode::iAwClamp); // anti-windup control
 
-  updateUseOuterI(); // Set the initial state of useOuterI based on current
-                     // error
+  updateUseOuterI(); // Set the initial state of useOuterI
+                     // based on current error
   swapPIDmode();     // set the
   loadPIDs();        // loads the P,I,D values into the PIDs
 
@@ -357,17 +342,20 @@ void setup() {
 
 void loop() { //******************main loop************************
   unsigned long currentMillis = millis(); // Get the current time
-  eb1.update();                           // button update
-  wdt_reset();                            // Good doggy
+  // EBupdate(void)                          // encoder button update
+  EBupdate();
+  wdt_reset(); // Good doggy
 
-  if (!systemIsHalted) { // don't run PIDs, we have something not okay.
+  if (!systemIsHalted) { // don't run PIDs, we have something
+                         // not okay.
     //  Ask if outer PID loop is ready to execute
-    if (chPID.Compute()) { // if PID1 runs, its timebase is controlled
-                           // internally. Lets use the output to make a useable
+    if (chPID.Compute()) { // if PID1 runs, its timebase is
+                           // controlled internally. Lets use
+                           // the output to make a useable
                            // input for PID2
       float deltaT =
-          PID1output * 0.33f; // lets scale PID1's output to 0 to X degrees F
-                              // over the current chamber temp
+          PID1output * 0.33f; // lets scale PID1's output to 0 to X degrees
+                              // F over the current chamber temp
       float ambientOffset = (setpoint - ambientTemp) *
                             0.1f; // feed forward the ambient vs setpoint in
                                   // increase control range on heatblock
@@ -375,8 +363,8 @@ void loop() { //******************main loop************************
                                  140); // Aim for delta from process
     }
     // Ask if inner PID loop is ready to execute
-    if (hbPID.Compute()) { // call PID2, if it returns that it ran, spit out
-                           // debugging info
+    if (hbPID.Compute()) { // call PID2, if it returns that it
+                           // ran, spit out debugging info
 
       //*********************
       // Convert to 8-bit value (0-255)
@@ -404,13 +392,15 @@ void loop() { //******************main loop************************
       DEBUG_PRINT(F("HTBLKINPUT="));
       DEBUG_PRINTLN(heatBlockInput);
 
-      // DEBUG_FLUSH(); // Keeps the CPU here until the talk is done
+      // DEBUG_FLUSH(); // Keeps the CPU here until the talk
+      // is done
     }
   }
   // sample sensors every 1000 millis
   if (currentMillis - sensorTimer >= SENSOR_RATE) {
 
-    sensorTimer = currentMillis; // this is rolloever safe acording to AI
+    sensorTimer = currentMillis; // this is rolloever safe
+                                 // acording to AI
     sampleSensors();
     digitalWrite(RUN_LED, !digitalRead(RUN_LED));
     setFanSpeed();
@@ -420,28 +410,30 @@ void loop() { //******************main loop************************
     previousMillis = currentMillis; // Get current time once
     displayUpdate();
   }
-  // test if it's time to timeout the status display.  Don't burn the OLED
+  // test if it's time to timeout the status display.  Don't
+  // burn the OLED
   if (StatusModeStarted == true &&
       currentMillis - statusScreenTimer >=
-          (px[STATUS_SECONDSp] *
-           1000)) { //*****lets setup a detailed status page display, we'll use
-                    // this to time it out to not burn the
-                    // screem****************
+          (px[STATUS_SECONDSp] * 1000)) { //*****lets setup a detailed status
+                                          // page display, we'll use
+                                          // this to time it out to not burn the
+                                          // screem****************
     displayMode = RUN;
     StatusModeStarted = false;
   }
-  // run the general control loop every 5 seconds, 5000 miillis
+  // run the general control loop every 5 seconds, 5000
+  // miillis
   if (currentMillis - controlTimer >= CONTROL_RATE) { // run controls   5000
-    controlTimer = currentMillis; // this is rolloever safe acording to AI
+    controlTimer = currentMillis;                     // this is rolloever safe
+                                                      // acording to AI
     // raise and lower the sun.
     double minutesNow = (hour() * 60) + minute();
     double lightMinutes =
         px[LIGHT_ON_HOURSp] * 30; //  number of minutes before and after noon
                                   //  light should be on hours * 60 / 2
     if ((minutesNow > 720 - lightMinutes && minutesNow < 720 + lightMinutes) &&
-        modeState ==
-            FRUIT) { // are we in fruit and is it time for lights?
-                     // ************FIX THIS, LIGHT_TIME IGNORED**********
+        modeState == FRUIT) { // are we in fruit and is it
+                              // time for lights?
       lightControl(true);
     } else {
       lightControl(false);
@@ -458,7 +450,8 @@ void loop() { //******************main loop************************
       hourFunctions(currentMillis);
       // DEBUG_PRINTLN(F("hour functions ran"));
     }
-    // lets do some stuff every 6 hours, daily regen of sensors
+    // lets do some stuff every 6 hours, daily regen of
+    // sensors
     if (hour() != last6thHour && hour() % 6 == 0) {
       last6thHour = hour();
       SixHourFunctions();
@@ -467,7 +460,6 @@ void loop() { //******************main loop************************
     detectHCmode();
     updateUseOuterI();
     checkForMosfetFailure();
-    //  setFanSpeed(40);
   }
   if (runMenuCode == true) { // code for changeing function withing the menu
     menuMenu();
@@ -494,13 +486,14 @@ void loop() { //******************main loop************************
   // **********************  status LEDS *********************
   digitalWrite(H2O_LED, humidifierRunning);
   digitalWrite(AIR_LED, airPumpRunning);
-  // regenMaint();  //check and see if a sensor is done with regeneration
+  // regenMaint();  //check and see if a sensor is done with
+  // regeneration
 }
 
 // detect if we need to swap between heat and cool mode
 void detectHCmode() {
 
-  if (PID1output > 0) {
+  if (PID1output > 2) {
     // Temperature is too low, definitively needs heat
     if (inHeatMode == false) { // Only print/switch if changing state
       inHeatMode = true;
@@ -508,7 +501,7 @@ void detectHCmode() {
       swapPIDmode();
     }
   }
-  if (PID1output < 0) {
+  if (PID1output < -2) {
     // Temperature is too high, definitively needs cooling
     if (inHeatMode == true) { // Only print/switch if changing state
       inHeatMode = false;
@@ -519,8 +512,8 @@ void detectHCmode() {
   digitalWrite(HEAT_LED, inHeatMode);
 }
 
-// detect if we are withing half of deadzone from target to change loop
-// agressiveness
+// detect if we are withing half of deadzone from target to
+// change loop agressiveness
 void updateUseOuterI() {
   static bool lastUseOuterI = false;
   static bool hasRan = false;
@@ -533,11 +526,11 @@ void updateUseOuterI() {
       useOuterI = false;
       DEBUG_PRINTLN(F("OUTERION=0"));
     }
-  } else {
     hasRan = true;
   }
 
-  // Turn I ON when error gets small enough (with some hysteresis)
+  // Turn I ON when error gets small enough (with some
+  // hysteresis)
   if (!useOuterI && error < px[DEAD_ZONEp] * 2) {
     useOuterI = true;
     DEBUG_PRINTLN(F("OUTERION=1"));
@@ -576,7 +569,8 @@ void loadPIDs(void) {
   hbPID.SetTunings(blockP, 0, 0); // Inner loop stays simple
 }
 
-// handle swapping the inner loop direction and safely switching the relay
+// handle swapping the inner loop direction and safely
+// switching the relay
 void swapPIDmode(void) {
   // 1. Kill the output hard (important with inverted PWM)
   SET_PWM(255);
@@ -591,18 +585,16 @@ void swapPIDmode(void) {
   delay(80); // Give relay time to settle
 
   // 4. Set correct direction for PIDs
-  // chPID.SetControllerDirection(inHeatMode ? chPID.Action::direct :
-  // chPID.Action::reverse);
   hbPID.SetControllerDirection(inHeatMode ? hbPID.Action::direct
                                           : hbPID.Action::reverse);
 
-  // 5. Load the correct P/I/D values for this mode + useOuterI state
+  // 5. Load the correct P/I/D values for this mode +
+  // useOuterI state
   loadPIDs();
 
   hbPID.Reset();
 
   // 6. Restart the PIDs
-  // chPID.SetMode(chPID.Control::automatic);
   hbPID.SetMode(hbPID.Control::automatic);
 }
 // set the heatsink fan speed.
@@ -611,7 +603,8 @@ void setFanSpeed() {
   const uint8_t rampRate = 1; // Same rate up and down
   uint8_t target;
 
-  // find target fan speed. 100% for too hot/cold, halt, or useOuterI = false
+  // find target fan speed. 100% for too hot/cold, halt, or
+  // useOuterI = false
   if (systemIsHalted || NTCtempHeatsink >= 120.0f || NTCtempHeatsink <= 32.0f ||
       !useOuterI) {
     target = 100;
@@ -707,7 +700,7 @@ void checkForMosfetFailure(void) {
   if (PWM_DRIVE.getAverage() < 5) {
     if (fabs(heatblockDeltaT) > 1) {
       DEBUG_PRINTLN(F("MOSFET FAILURE SUSPECTED"));
-      confirmMosfetShort(); // are things are happening?
+      confirmMosfetShort(); // are bad things are happening?
     }
   }
 }
@@ -745,7 +738,8 @@ void scuttleShip(void) {
   SET_PWM(0); // PWM off (useless if FET shorted, still do it)
               // pwmDrive = 0;
   // if (inHeatMode) {
-  digitalWrite(PELTIER_REV_PIN, LOW); // match whatever "cool" already is
+  digitalWrite(PELTIER_REV_PIN,
+               LOW); // match whatever "cool" already is
   // inHeatMode = false;
   //}
   // if already cool, do not touch the relay

@@ -7,7 +7,7 @@
 #include <EEPROM.h>
 //#include "PID_RT.h"
 #include <QuickPID.h>       //https://github.com/Dlloydev/QuickPID
-#include <EncoderButton.h>  //https://github.com/Stutchbury/EncoderButton
+//#include <EncoderButton.h>  //https://github.com/Stutchbury/EncoderButton
 #include <TimeLib.h>        //https://www.pjrc.com/teensy/td_libs_Time.html
 //#include "climateChamber.h"
 #include "RunningAverage.h"  ///https://github.com/RobTillaart/RunningAverage/tree/master
@@ -252,9 +252,11 @@ extern const float baudRates[14];
 
 
 
-extern EncoderButton eb1;
+//extern EncoderButton eb1;
 extern QuickPID chPID;
 extern QuickPID hbPID;
+
+extern volatile int8_t encDelta;
 
 // ========== Function prototypes (temporary – everything in one place for now) ==========
 void detectHCmode();
