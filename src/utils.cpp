@@ -7,23 +7,6 @@
 ISR(INT0_vect) { encStep(); } // encoder route setup
 ISR(INT1_vect) { encStep(); } // both interupts call the same subrouting.
 
-/*
-//handles button presses
-void onEb1Clicked(EncoderButton& eb) {
-  //Serial.println(F(">>> CALLBACK FIRED <<<"));
-  if (displayMode == RUN) {      // if home secreen, launch menu
-       displayMode = MENU;
-  } else {      //in not on home screen, pass the button press on to other
-functions button = 1;
-    //if not running set switchStatus to button press for start condition
-  }
-}
-// A function to handle the 'encoder' event
-void onEb1Encoder(EncoderButton& eb) {  //this handles the button rotation
-  encoder += eb.increment();
-}
-*/
-
 int8_t encoderRead(void) { // call this from loop()?  Why can't I just encDelta?
   int8_t d;
   noInterrupts();
@@ -64,7 +47,7 @@ void encoderSetup(void) {           // call this from setup?
 // handles encoder events
 void encStep(void) { // interupt sub routine
   static uint8_t last = 0;
-  uint8_t now = (PIND & 0x0C) >> 2; // PD3:PD2  This is doing what?
+  uint8_t now = (PIND & 0x0C) >> 2; // PD3:PD2
   uint8_t sum = (last << 2) |
                 now; // so this is bitshift left 2 places, and then OR with now?
   if (now == 0b11) { // detent rest (A and B high)
@@ -76,11 +59,25 @@ void encStep(void) { // interupt sub routine
   last = now; // save the current state
 }
 
-// handles the parameter programming menu
-void programmingMenu(void) { // this is a recycled mess. But it works nice. GROK
-                             // tried to rewrite it, but after hours it still
-                             // didn't work. Speggeti code warning
+void statusMenu() {
+  menuSelector += encoder;
+  encoder = 0;
+  if (menuSelector < 0) {
+    menuSelector = 0;
+  }
+  if (menuSelector > STATUS_SCREEN_ENTRIES) {
+    menuSelector = STATUS_SCREEN_ENTRIES;
+  }
+  if (button) {
+    button = 0;
+    runStatusCode = 0;
+    displayMode = RUN;
+    menuSelector=3;
+  }
+}
 
+// handles the parameter programming menu
+void programmingMenu(void) { // this is a recycled mess. But it works nice.
   if (edit && menuPointer == 10) { // are we selecting the parameters
     currentParam += encoder; // change pointer of parameter by encoder counts
     if (currentParam < 0) {  // did we hit bottom of list?
@@ -352,6 +349,7 @@ void menuMenu(void) {
       // code below. ****** displayMode = RUN;
       displayMode = STATUS;
       StatusModeStarted = true;
+      runStatusCode = true;
       u8x8.clearDisplay(); // we are going to try to not clear the display in
                            // the status updates, removes flicker
       statusScreenTimer = millis();

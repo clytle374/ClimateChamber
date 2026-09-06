@@ -18,6 +18,9 @@ extern U8X8_SH1106_128X64_WINSTAR_4W_HW_SPI u8x8;
 // it accepts 0-255
 // u8x8.sendF("ca", 0x81, 0x00);  //deeper dimming last input accepts 0x00 to
 // 0x0F
+void displayStatus(void);
+void targetLine(uint8_t row);
+void displaySensorStatus(uint8_t idx);
 void displayUpdate(void);
 void displayProgram(void);
 int rightJustify(double value);

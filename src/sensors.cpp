@@ -243,9 +243,9 @@ void selectI2CChannel(uint8_t channel) {
 }
 
 // read a T&H sensor
-void readSHT41(uint8_t idx, bool force) {
-  if (!force && sensor[idx].regenState == REGEN ||
-      sensor[idx].regenState == FAILED) {
+void readSHT41(uint8_t idx, bool force) {       //force to to test a failed sensor
+  if (!force &&
+      (sensor[idx].regenState == REGEN || sensor[idx].regenState == FAILED)) {
     return; // don’t talk to it right now
   }
   uint8_t address;
@@ -309,29 +309,9 @@ void readSHT41(uint8_t idx, bool force) {
 // sample all the sensors in the unit
 void sampleSensors(void) {
   readSHT41(0, false);
-  if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
-    Wire.clearWireTimeoutFlag();      // debug use, delete *************
-    DEBUG_PRINTLN(F("T&H Sensor 0")); //*********************
-    numberOfWireFaults++;
-  }
   readSHT41(1, false);
-  if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
-    Wire.clearWireTimeoutFlag();      // debug use, delete *************
-    DEBUG_PRINTLN(F("T&H Sensor 1")); //*********************
-    numberOfWireFaults++;
-  }
   readSHT41(2, false);
-  if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
-    Wire.clearWireTimeoutFlag();      // debug use, delete *************
-    DEBUG_PRINTLN(F("T&H Sensor 2")); //*********************
-    numberOfWireFaults++;
-  }
   readSHT41(3, false);
-  if (Wire.getWireTimeoutFlag()) {    // track wire resets **************
-    Wire.clearWireTimeoutFlag();      // debug use, delete *************
-    DEBUG_PRINTLN(F("T&H Sensor 3")); //*********************
-    numberOfWireFaults++;
-  }
 
   // === LM75B Ambient Temperature ===
   selectI2CChannel(I2C_CH_LOCAL_TEMP);

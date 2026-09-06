@@ -27,14 +27,6 @@ shut off airpump, humidifier, and even LEDs? while in mosfer failure modes.
 
 Shut off interupts when writing to the eeprom
 
-Switching from encoder button library
-RAM:   [=====     ]  48.4% (used 1981 bytes from 4096 bytes)
-Flash: [======    ]  55.1% (used 36118 bytes from 65536 bytes)
-stack 1789
-After
-RAM:   [=====     ]  46.1% (used 1889 bytes from 4096 bytes)
-Flash: [=====     ]  51.6% (used 33804 bytes from 65536 bytes)
-stack 1927
 
 */
 
@@ -86,6 +78,7 @@ uint8_t fanTarget = 25;  // Desired fan speed (updated from main control logic)
 bool inHeatMode = true;  // PID to setup for heat
 bool runProgramCode = 0; // switch on the programming code
 bool runMenuCode = 0;    // switch on the menufunctions code
+bool runStatusCode = 0; //swith on the status code
 bool StatusModeStarted = 0; // are we going to be in status code?
 int menuSelector = 3;       // selecting menu options
 //  shorter than update.
@@ -420,6 +413,7 @@ void loop() { //******************main loop************************
                                           // screem****************
     displayMode = RUN;
     StatusModeStarted = false;
+    runStatusCode = false;
   }
   // run the general control loop every 5 seconds, 5000
   // miillis
@@ -461,8 +455,12 @@ void loop() { //******************main loop************************
     updateUseOuterI();
     checkForMosfetFailure();
   }
+  //*********************** PUT THESE INSIDE THE ABOVE UPDATE DISPLAY INTERVAL CATCH, WHY ARE WE RUNNING THESE LIKE CRAZY******************************
   if (runMenuCode == true) { // code for changeing function withing the menu
     menuMenu();
+  }
+  if (runStatusCode == true){
+    statusMenu();
   }
   if (runProgramCode == true) { // are we in programing mode?
     programmingMenu();

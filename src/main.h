@@ -25,6 +25,9 @@
 #define SENSOR_RATE  1000UL  // time for reads   
 #define TEMP_FAULT_THRESHOLD 5      // 5F diffrence is a dead sensor. 
 #define HUMIDITY_FAULT_THRESHOLD 5  //5 percent diff is a sensor that needs regen
+#define SCREEN_LINES_HIGH 8     //home many lines can we put on the screen  
+#define SCREEN_LINES_WIDTH 16  //how many charters can we fit across the screen 
+#define STATUS_SCREEN_ENTRIES 15 //how many enteries do we have in the status screen?
 
 
 // ***** GENERAL PROFILE CONSTANTS *****
@@ -177,6 +180,7 @@ extern uint8_t fanTarget;
 extern bool inHeatMode;
 extern bool runProgramCode;
 extern bool runMenuCode;
+extern bool runStatusCode;
 extern bool StatusModeStarted;
 extern int menuSelector;
 //extern bool humidifierRan;
