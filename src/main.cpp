@@ -23,6 +23,13 @@ GND):  DONE: BUT TEST THIS
 
 Catch humidity readings way over setpoint and regen sensors. 
 
+shut off airpump, humidifier, and even LEDs? while in mosfer failure modes. 
+
+Switching from encoder button library
+RAM:   [=====     ]  48.4% (used 1981 bytes from 4096 bytes)
+Flash: [======    ]  55.1% (used 36118 bytes from 65536 bytes)
+stack 1789 
+
 */
 
 #include "main.h"
